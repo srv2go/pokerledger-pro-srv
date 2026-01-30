@@ -42,8 +42,13 @@ const request = async (endpoint, options = {}) => {
   }
 
   if (!response.ok) {
+    // Handle validation errors array
+    let errorMessage = data?.error || data?.message || 'Request failed';
+    if (data?.errors && Array.isArray(data.errors)) {
+      errorMessage = data.errors.map(e => e.msg || e.message).join(', ');
+    }
     throw new ApiError(
-      data?.error || data?.message || 'Request failed',
+      errorMessage,
       response.status,
       data
     );

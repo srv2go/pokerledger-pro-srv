@@ -57,20 +57,29 @@ export default function CreateGame() {
 
     try {
       const gameData = {
-        ...formData,
-        buyInAmount: parseFloat(formData.buyInAmount),
-        blindsSmall: parseFloat(formData.blindsSmall),
-        blindsBig: parseFloat(formData.blindsBig),
-        rakePercentage: parseFloat(formData.rakePercentage),
-        maxRebuys: formData.maxRebuys ? parseInt(formData.maxRebuys) : null,
+        name: formData.name,
+        gameType: formData.gameType,
         startTime: new Date(formData.startTime).toISOString(),
+        buyInAmount: parseFloat(formData.buyInAmount),
         playerIds: selectedPlayers.map(p => p.id),
       };
 
+      // Add optional fields only if they have values
+      if (formData.location) gameData.location = formData.location;
+      if (formData.blindsSmall) gameData.blindsSmall = parseFloat(formData.blindsSmall);
+      if (formData.blindsBig) gameData.blindsBig = parseFloat(formData.blindsBig);
+      if (formData.rakePercentage) gameData.rakePercentage = parseFloat(formData.rakePercentage);
+      if (formData.rebuyPolicy) gameData.rebuyPolicy = formData.rebuyPolicy;
+      if (formData.maxRebuys) gameData.maxRebuys = parseInt(formData.maxRebuys);
+      if (formData.notes) gameData.notes = formData.notes;
+
+      console.log('Creating game with data:', gameData);
       const { game } = await gamesApi.create(gameData);
+      console.log('Game created successfully:', game);
       navigate(`/games/${game.id}`);
     } catch (err) {
       console.error('Game creation error:', err);
+      console.error('Error details:', { status: err.status, data: err.data });
       setError(err.message || err.error || 'Failed to create game');
       setLoading(false);
     }

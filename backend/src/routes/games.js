@@ -110,10 +110,13 @@ router.post('/', [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.error('Game creation validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { playerIds, ...gameData } = req.body;
+
+    console.log('Creating game:', { gameData, playerIds, hostId: req.user.id });
 
     const game = await prisma.game.create({
       data: {
