@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gamesApi, playersApi } from '../services/api';
 import { Card, Button, Input, Select, Modal, Avatar } from '../components/ui';
@@ -70,7 +70,8 @@ export default function CreateGame() {
       const { game } = await gamesApi.create(gameData);
       navigate(`/games/${game.id}`);
     } catch (err) {
-      setError(err.message || 'Failed to create game');
+      console.error('Game creation error:', err);
+      setError(err.message || err.error || 'Failed to create game');
       setLoading(false);
     }
   };
@@ -358,9 +359,9 @@ function PlayerSelectModal({ isOpen, onClose, selectedPlayers, onSelect }) {
   };
 
   // Load players when modal opens
-  useState(() => {
+  useEffect(() => {
     if (isOpen) loadPlayers();
-  }, [isOpen]);
+  }, [isOpen, search]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Players" size="lg">

@@ -198,8 +198,8 @@ function AddPlayerModal({ onClose, onSuccess }) {
   };
 
   return (
-    <Modal onClose={onClose} title="Add New Player">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal isOpen={true} onClose={onClose} title="Add New Player">
+      <form onSubmit={handleSubmit} className="space-y-4 p-4">
         {error && (
           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
             <p className="text-sm text-red-400">{error}</p>

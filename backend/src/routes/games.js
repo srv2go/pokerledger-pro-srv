@@ -104,7 +104,8 @@ router.post('/', [
   body('anteAmount').optional().isFloat({ min: 0 }),
   body('rakePercentage').optional().isFloat({ min: 0, max: 100 }),
   body('rebuyPolicy').optional().isIn(['UNLIMITED', 'CAPPED', 'TIME_LIMITED', 'NONE']),
-  body('maxRebuys').optional().isInt({ min: 0 })
+  body('maxRebuys').optional().isInt({ min: 0 }),
+  body('playerIds').optional().isArray()
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -112,20 +113,38 @@ router.post('/', [
       return res.status(400).json({ errors: errors.array() });
     }
 
+    const { playerIds, ...gameData } = req.body;
+
     const game = await prisma.game.create({
       data: {
-        ...req.body,
-        hostId: req.user.id
+        ...gameData,
+        hostId: req.user.id,
+        players: playerIds && playerIds.length > 0 ? {
+          create: playerIds.map(playerId => ({
+            playerId,
+            initialBuyIn: gameData.buyInAmount,
+            totalInvested: gameData.buyInAmount,
+            status: 'INVITED'
+          }))
+        } : undefined
       },
       include: {
         host: {
           select: { id: true, displayName: true, avatarUrl: true }
+        },
+        players: {
+          include: {
+            player: {
+              select: { id: true, displayName: true, avatarUrl: true }
+            }
+          }
         }
       }
     });
 
     res.status(201).json({ game });
   } catch (error) {
+    console.error('Game creation error:', error);
     next(error);
   }
 });
