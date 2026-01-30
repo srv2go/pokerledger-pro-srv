@@ -18,6 +18,9 @@ const { setupWebSocket } = require('./services/websocket');
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy - required for Render and other reverse proxies
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
