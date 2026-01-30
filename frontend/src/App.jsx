@@ -8,6 +8,8 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
+import Profile from './pages/Profile';
+import Players from './pages/Players';
 
 // Protected Route wrapper
 function ProtectedRoute() {
@@ -53,11 +55,11 @@ function AppRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/games/new" element={<CreateGame />} />
         <Route path="/games/:id" element={<GameDetail />} />
+        <Route path="/players" element={<Players />} />
+        <Route path="/profile" element={<Profile />} />
         {/* Placeholder routes */}
-        <Route path="/players" element={<ComingSoon title="Players" />} />
         <Route path="/stats" element={<ComingSoon title="Statistics" />} />
         <Route path="/history" element={<ComingSoon title="History" />} />
-        <Route path="/profile" element={<ComingSoon title="Profile" />} />
       </Route>
 
       {/* Fallback */}
