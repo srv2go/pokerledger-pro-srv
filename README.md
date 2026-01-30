@@ -1,10 +1,19 @@
 # PokerLedger Pro 🃏
 
-A mobile-first web application for hosts of private Texas Hold'em and Omaha poker games to streamline financial tracking, player management, and communication during home games.
+A mobile-first application for hosts of private Texas Hold'em and Omaha poker games to streamline financial tracking, player management, and communication during home games.
 
 ![PokerLedger Pro](https://img.shields.io/badge/version-1.0.0-green)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 ![PostgreSQL](https://img.shields.io/badge/postgresql-%3E%3D14-blue)
+![Android](https://img.shields.io/badge/platform-android-green)
+
+## 🚀 Quick Start
+
+**Want to deploy and get your Android app running?**
+
+👉 **[See QUICKSTART.md](QUICKSTART.md)** for 5-minute setup with free hosting!
+
+Already have an APK ready at `~/Downloads/PokerLedgerPro.apk`
 
 ## Features
 
@@ -29,6 +38,12 @@ A mobile-first web application for hosts of private Texas Hold'em and Omaha poke
 - Track profit/loss across sessions
 
 ## Tech Stack
+
+### Mobile App
+- **React Native (Capacitor)** - Native Android app
+- **React 18** with Vite
+- **Tailwind CSS** with custom poker theme
+- **Native device features** support
 
 ### Backend
 - **Node.js** with Express.js
@@ -267,6 +282,33 @@ pokerledger-pro/
 5. Game moves to COMPLETED status
 
 ## Deployment
+
+### Mobile App (Android)
+
+The app is ready to share! APK location: `~/Downloads/PokerLedgerPro.apk`
+
+**Rebuild after changes:**
+```bash
+./build-apk.sh
+```
+
+**Update with your backend URL:**
+```bash
+./update-backend-url.sh https://your-backend-url.onrender.com
+```
+
+See [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md) for details.
+
+### Backend - Free Hosting Options
+
+**Option 1: Render (Recommended)**
+- See [QUICKSTART.md](QUICKSTART.md) for 5-minute setup
+- Or [DEPLOY_TO_RENDER.md](DEPLOY_TO_RENDER.md) for detailed guide
+
+**Option 2: Other Free Platforms**
+- Railway.app (free tier)
+- Fly.io (free tier)
+- Cyclic.sh (free tier)
 
 ### Production Build
 ```bash
