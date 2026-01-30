@@ -1,0 +1,36 @@
+services:
+  # Web Service for Backend API
+  - type: web
+    name: pokerledger-backend
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && chmod +x render-build.sh && ./render-build.sh
+    startCommand: cd backend && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pokerledger-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: FRONTEND_URL
+        value: "*"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+
+databases:
+  # PostgreSQL Database
+  - name: pokerledger-db
+    databaseName: pokerledger
+    plan: free
+    region: oregon

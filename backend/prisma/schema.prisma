@@ -1,0 +1,244 @@
+// Prisma schema for PokerLedger Pro
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - supports Host, Player, and Guest roles
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String?
+  phone           String?
+  displayName     String
+  avatarUrl       String?
+  role            UserRole  @default(PLAYER)
+  paymentMethods  String[]  @default([])
+  preferences     Json?
+  isVerified      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  hostedGames     Game[]         @relation("GameHost")
+  gameParticipations GamePlayer[]
+  transactions    Transaction[]
+  notifications   Notification[]
+  sentTopUpRequests TopUpRequest[] @relation("RequestedBy")
+  
+  @@map("users")
+}
+
+enum UserRole {
+  HOST
+  PLAYER
+  GUEST
+}
+
+// Game session model
+model Game {
+  id              String      @id @default(uuid())
+  name            String
+  gameType        GameType    @default(TEXAS_HOLDEM)
+  status          GameStatus  @default(SCHEDULED)
+  location        String?
+  startTime       DateTime
+  endTime         DateTime?
+  buyInAmount     Decimal     @db.Decimal(10, 2)
+  blindsSmall     Decimal?    @db.Decimal(10, 2)
+  blindsBig       Decimal?    @db.Decimal(10, 2)
+  anteAmount      Decimal?    @db.Decimal(10, 2)
+  rakePercentage  Decimal     @default(0) @db.Decimal(5, 2)
+  rebuyPolicy     RebuyPolicy @default(UNLIMITED)
+  maxRebuys       Int?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  hostId          String
+  host            User           @relation("GameHost", fields: [hostId], references: [id])
+  players         GamePlayer[]
+  transactions    Transaction[]
+  topUpRequests   TopUpRequest[]
+
+  @@map("games")
+}
+
+enum GameType {
+  TEXAS_HOLDEM
+  OMAHA
+  OMAHA_HI_LO
+  MIXED
+}
+
+enum GameStatus {
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum RebuyPolicy {
+  UNLIMITED
+  CAPPED
+  TIME_LIMITED
+  NONE
+}
+
+// Junction table for game participants
+model GamePlayer {
+  id              String        @id @default(uuid())
+  gameId          String
+  playerId        String
+  initialBuyIn    Decimal       @db.Decimal(10, 2)
+  totalInvested   Decimal       @default(0) @db.Decimal(10, 2)
+  cashOut         Decimal?      @db.Decimal(10, 2)
+  finalBalance    Decimal?      @db.Decimal(10, 2)
+  status          PlayerStatus  @default(ACTIVE)
+  seatNumber      Int?
+  joinedAt        DateTime      @default(now())
+  leftAt          DateTime?
+
+  // Relations
+  game            Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player          User          @relation(fields: [playerId], references: [id])
+
+  @@unique([gameId, playerId])
+  @@map("game_players")
+}
+
+enum PlayerStatus {
+  INVITED
+  CONFIRMED
+  ACTIVE
+  SITTING_OUT
+  ELIMINATED
+  CASHED_OUT
+}
+
+// Financial transactions
+model Transaction {
+  id              String            @id @default(uuid())
+  gameId          String
+  playerId        String
+  type            TransactionType
+  amount          Decimal           @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod     @default(CASH)
+  paymentStatus   PaymentStatus     @default(COMPLETED)
+  notes           String?
+  createdAt       DateTime          @default(now())
+
+  // Relations
+  game            Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player          User              @relation(fields: [playerId], references: [id])
+
+  @@map("transactions")
+}
+
+enum TransactionType {
+  BUY_IN
+  RE_BUY
+  TOP_UP
+  CASH_OUT
+  ADJUSTMENT
+}
+
+enum PaymentMethod {
+  CASH
+  VENMO
+  PAYPAL
+  ZELLE
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  DISPUTED
+  REFUNDED
+}
+
+// Top-up requests with approval workflow
+model TopUpRequest {
+  id              String            @id @default(uuid())
+  gameId          String
+  playerId        String
+  amount          Decimal           @db.Decimal(10, 2)
+  status          TopUpStatus       @default(PENDING)
+  notificationSent Boolean          @default(false)
+  whatsappMessageId String?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime          @default(now())
+
+  // Relations
+  game            Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player          User              @relation("RequestedBy", fields: [playerId], references: [id])
+
+  @@map("top_up_requests")
+}
+
+enum TopUpStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// Notification log
+model Notification {
+  id              String              @id @default(uuid())
+  userId          String
+  type            NotificationType
+  title           String
+  message         String
+  channel         NotificationChannel
+  status          NotificationStatus  @default(PENDING)
+  externalId      String?             // WhatsApp/SMS message ID
+  metadata        Json?
+  sentAt          DateTime?
+  readAt          DateTime?
+  createdAt       DateTime            @default(now())
+
+  // Relations
+  user            User                @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  GAME_INVITATION
+  TOP_UP_REQUEST
+  TOP_UP_APPROVED
+  TOP_UP_REJECTED
+  GAME_STARTING
+  GAME_ENDED
+  BALANCE_REMINDER
+  GAME_SUMMARY
+}
+
+enum NotificationChannel {
+  IN_APP
+  SMS
+  WHATSAPP
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}

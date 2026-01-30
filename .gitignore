@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Build outputs
+dist/
+build/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+backend/prisma/migrations/*_migration.lock
+
+# Frontend build
+frontend/dist/
+frontend/node_modules/
+
+# Backend
+backend/node_modules/
+
+# Android
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/.gradle/
+frontend/android/local.properties
+*.apk
+*.aab
+
+# Capacitor
+frontend/android/
+frontend/ios/
