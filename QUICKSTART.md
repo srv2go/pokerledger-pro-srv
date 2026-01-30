@@ -27,7 +27,7 @@ gh repo create pokerledger-pro --private --source=. --push
    - Name: `pokerledger-db`
    - Plan: **Free**
    - Click "Create"
-   - **Copy the "Internal Database URL"**
+   - **Copy the "Internal Database URL"**postgresql://pokerledger_db_user:OmssfsWZpGozcBZ9XsZm7vRtTIk26cHy@dpg-d5tvrnh4tr6s739l2hu0-a/pokerledger_db
 
 3. **New Web Service**:
    - Connect your GitHub repo
@@ -40,7 +40,7 @@ gh repo create pokerledger-pro --private --source=. --push
    ```
    NODE_ENV=production
    PORT=10000
-   DATABASE_URL=<paste the Internal Database URL from step 2>
+   DATABASE_URL=postgresql://pokerledger_db_user:OmssfsWZpGozcBZ9XsZm7vRtTIk26cHy@dpg-d5tvrnh4tr6s739l2hu0-a/pokerledger_db
    JWT_SECRET=<generate random 32-character string>
    JWT_EXPIRES_IN=7d
    FRONTEND_URL=*

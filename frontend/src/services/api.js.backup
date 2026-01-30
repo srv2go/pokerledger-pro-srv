@@ -3,7 +3,7 @@
  * Simplified flow: Host records all transactions, players get WhatsApp notifications
  */
 
-const API_BASE = 'https://pokerledger-backend.onrender.com/api';
+const API_BASE = '/api';
 
 class ApiError extends Error {
   constructor(message, status, data) {
