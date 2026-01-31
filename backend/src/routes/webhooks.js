@@ -12,12 +12,24 @@ router.get('/whatsapp', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
+  console.log('Webhook verification attempt:', { 
+    mode, 
+    receivedToken: token, 
+    expectedToken: WEBHOOK_VERIFY_TOKEN,
+    challenge 
+  });
+
+  if (!WEBHOOK_VERIFY_TOKEN) {
+    console.error('WHATSAPP_WEBHOOK_VERIFY_TOKEN not set in environment variables!');
+    return res.status(500).send('Webhook verify token not configured');
+  }
+
   if (mode === 'subscribe' && token === WEBHOOK_VERIFY_TOKEN) {
-    console.log('WhatsApp webhook verified');
+    console.log('✅ WhatsApp webhook verified successfully');
     return res.status(200).send(challenge);
   }
 
-  console.warn('WhatsApp webhook verification failed');
+  console.warn('❌ WhatsApp webhook verification failed - token mismatch');
   res.sendStatus(403);
 });
 
