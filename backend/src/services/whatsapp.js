@@ -120,7 +120,7 @@ Good luck at the table! 🍀`;
     await prisma.notification.create({
       data: {
         userId: player.id,
-        type: isRebuy ? 'RE_BUY' : 'BUY_IN',
+        type: 'BALANCE_REMINDER',
         title: `${type} Recorded`,
         message: `${formatCurrency(amount)} ${type.toLowerCase()} for ${game.name}`,
         channel: 'WHATSAPP',
@@ -157,7 +157,7 @@ Keep playing! 🃏`;
     await prisma.notification.create({
       data: {
         userId: player.id,
-        type: 'TOP_UP',
+        type: 'TOP_UP_APPROVED',
         title: 'Top-Up Added',
         message: `${formatCurrency(amount)} added in ${game.name}`,
         channel: 'WHATSAPP',
@@ -203,7 +203,7 @@ Thanks for playing!`;
     await prisma.notification.create({
       data: {
         userId: player.id,
-        type: 'CASH_OUT',
+        type: 'GAME_SUMMARY',
         title: 'Cash-Out Complete',
         message: `${resultText} ${formatCurrency(Math.abs(profit))} in ${game.name}`,
         channel: 'WHATSAPP',
