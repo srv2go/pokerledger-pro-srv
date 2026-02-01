@@ -17,9 +17,13 @@ export default function Dashboard() {
   const { games, loading, error, refresh } = useGames();
   const navigate = useNavigate();
 
-  const activeGames = games.filter(g => g.status === 'ACTIVE');
-  const scheduledGames = games.filter(g => g.status === 'SCHEDULED');
-  const recentGames = games.filter(g => g.status === 'COMPLETED').slice(0, 3);
+  // Free tier enforcement: Show only last 3 games for FREE users
+  const isFreeUser = user?.subscriptionTier === 'FREE' || !user?.subscriptionTier;
+  const displayGames = isFreeUser ? games.slice(-3) : games;
+
+  const activeGames = displayGames.filter(g => g.status === 'ACTIVE');
+  const scheduledGames = displayGames.filter(g => g.status === 'SCHEDULED');
+  const recentGames = displayGames.filter(g => g.status === 'COMPLETED').slice(0, 3);
 
   // Calculate stats
   const totalPot = activeGames.reduce((sum, g) => sum + parseFloat(g._sum?.totalInvested || 0), 0);
@@ -59,6 +63,24 @@ export default function Dashboard() {
       </header>
 
       <main className="px-4 py-6 space-y-6">
+        {/* Free Tier Notice */}
+        {isFreeUser && games.length > 3 && (
+          <Card className="p-4 bg-yellow-500/10 border-yellow-500/20">
+            <div className="flex items-start gap-3">
+              <TrendingUp className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-yellow-400 mb-1">Free Tier Limit</p>
+                <p className="text-sm text-yellow-300/80 mb-3">
+                  You're seeing your last 3 games. Upgrade to Premium to access your full game history.
+                </p>
+                <Button size="sm" variant="outline" className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10">
+                  Upgrade to Premium
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-3">
           <StatCard 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGame, formatCurrency, useToast } from '../hooks';
 import { gamesApi, transactionsApi, playersApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { 
   Card, Button, Badge, Avatar, Modal, Input, Select,
   StatCard, LoadingScreen, ToastContainer, EmptyState
@@ -24,8 +25,12 @@ const PAYMENT_METHODS = [
 export default function GameDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { game, stats, loading, error, isHost, refresh } = useGame(id);
   const { toasts, success, error: showError, removeToast } = useToast();
+  
+  // Check if user can see rake (HOST, ADMIN, SUPER_ADMIN)
+  const canSeeRake = user?.role && ['HOST', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
 
   const [showBuyInModal, setShowBuyInModal] = useState(false);
   const [showCashOutModal, setShowCashOutModal] = useState(false);
@@ -255,7 +260,7 @@ export default function GameDetail() {
             </div>
             {game.location && (
               <div className="flex justify-between">
-                <span className="text-gray-400">Location</span>
+             canSeeRake &&    <span className="text-gray-400">Location</span>
                 <span className="text-white">{game.location}</span>
               </div>
             )}
@@ -320,7 +325,10 @@ export default function GameDetail() {
         isOpen={showAddPlayerModal}
         onClose={() => setShowAddPlayerModal(false)}
         gameId={id}
-        existingPlayerIds={players.map(p => p.playerId)}
+        existingPlayerIds={players
+          .filter(p => p.status === 'ACTIVE' || p.status === 'INVITED')
+          .map(p => p.playerId)
+        }
         defaultBuyIn={game.buyInAmount}
         onSuccess={(message) => {
           refresh();

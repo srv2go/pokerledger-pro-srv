@@ -12,6 +12,7 @@ import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
 import Profile from './pages/Profile';
 import Players from './pages/Players';
+import Stats from './pages/Stats';
 
 // Android back button handler
 function useAndroidBackButton() {
@@ -82,8 +83,8 @@ function AppRoutes() {
         <Route path="/games/:id" element={<GameDetail />} />
         <Route path="/players" element={<Players />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/stats" element={<Stats />} />
         {/* Placeholder routes */}
-        <Route path="/stats" element={<ComingSoon title="Statistics" />} />
         <Route path="/history" element={<ComingSoon title="History" />} />
       </Route>
 
