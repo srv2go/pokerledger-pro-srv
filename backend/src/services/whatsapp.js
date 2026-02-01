@@ -1,6 +1,7 @@
 /**
  * WhatsApp Cloud API Service
  * Sends courtesy notifications to players when host records transactions
+ * Updated: 2026-02-01 - Fixed notification type enums
  */
 
 const { PrismaClient } = require('@prisma/client');
