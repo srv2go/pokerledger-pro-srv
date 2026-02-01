@@ -16,7 +16,6 @@ model User {
   displayName     String
   avatarUrl       String?
   role            UserRole       @default(PLAYER)
-  subscription    Subscription   @default(FREE)
   whatsappEnabled Boolean        @default(true)
   rememberToken   String?        // long-lived token for auto-login
   preferences     Json?
@@ -43,11 +42,6 @@ enum UserRole {
   ADMIN
   HOST
   PLAYER
-}
-
-enum Subscription {
-  FREE
-  PREMIUM
 }
 
 // ─── GAME ───────────────────────────────────────────────
