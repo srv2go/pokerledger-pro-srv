@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { playersApi } from '../services/api';
 import { Card, Button, Input, Avatar, LoadingScreen, EmptyState, Modal } from '../components/ui';
 import { ArrowLeft, Plus, Search, Users, Phone, Mail, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { formatPoints } from '../utils/currency';
 
 export default function Players() {
   const navigate = useNavigate();
@@ -33,15 +34,6 @@ export default function Players() {
     player.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     player.phone?.includes(searchQuery)
   );
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   if (loading) {
     return <LoadingScreen message="Loading players..." />;
@@ -156,11 +148,7 @@ function PlayerCard({ player }) {
         <div className="text-right">
           <div className={`font-semibold ${totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {totalProfit >= 0 ? <TrendingUp className="w-4 h-4 inline mr-1" /> : <TrendingDown className="w-4 h-4 inline mr-1" />}
-            {new Intl.NumberFormat('en-US', {
-              style: 'currency',
-              currency: 'USD',
-              minimumFractionDigits: 0,
-            }).format(Math.abs(totalProfit))}
+            {formatPoints(Math.abs(totalProfit))}
           </div>
           <p className="text-xs text-gray-500">{gamesPlayed} games</p>
         </div>
