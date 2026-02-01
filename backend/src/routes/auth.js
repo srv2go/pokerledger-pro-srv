@@ -124,8 +124,8 @@ router.put('/profile', authenticate, async (req, res, next) => {
 });
 
 // ─── PROMOTE USER (super admin / admin only) ────────────
-router.post('/promote', rememberToken, ...user } = req.user;
-  res.json({ user
+router.post('/promote', authenticate, async (req, res, next) => {
+  try {
     const { userId, role } = req.body;
     const caller = req.user;
 
