@@ -1,6 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoadingScreen } from './components/ui';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // Pages
 import Login from './pages/Login';
@@ -10,6 +12,27 @@ import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
 import Profile from './pages/Profile';
 import Players from './pages/Players';
+
+// Android back button handler
+function useAndroidBackButton() {
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    const handleBackButton = () => {
+      if (window.history.length > 1) {
+        navigate(-1);
+        return;
+      }
+      CapacitorApp.exitApp();
+    };
+
+    CapacitorApp.addListener('backButton', handleBackButton);
+
+    return () => {
+      CapacitorApp.removeAllListeners();
+    };
+  }, [navigate]);
+}
 
 // Protected Route wrapper
 function ProtectedRoute() {
@@ -42,6 +65,8 @@ function AuthRoute() {
 }
 
 function AppRoutes() {
+  useAndroidBackButton(); // Handle Android back button
+
   return (
     <Routes>
       {/* Auth routes */}
