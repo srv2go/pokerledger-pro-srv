@@ -12,10 +12,12 @@ model User {
   id              String         @id @default(uuid())
   email           String         @unique
   passwordHash    String?
+  pin             String?        // hashed 4-6 digit PIN for quick unlock
   phone           String?
   displayName     String
   avatarUrl       String?
   role            UserRole       @default(PLAYER)
+  subscription    Subscription   @default(FREE)
   whatsappEnabled Boolean        @default(true)
   rememberToken   String?        // long-lived token for auto-login
   preferences     Json?
@@ -42,6 +44,11 @@ enum UserRole {
   ADMIN
   HOST
   PLAYER
+}
+
+enum Subscription {
+  FREE
+  PREMIUM
 }
 
 // ─── GAME ───────────────────────────────────────────────

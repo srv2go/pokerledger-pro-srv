@@ -20,23 +20,25 @@ router.post('/register', [
   body('password').isLength({ min: 6 }),
   body('displayName').trim().isLength({ min: 2 }),
   body('phone').optional().trim(),
+  body('pin').optional().isLength({ min: 4, max: 6 }),
   body('role').optional().isIn(['PLAYER', 'HOST']),  // only these via self-reg
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { email, password, displayName, phone, role = 'PLAYER' } = req.body;
+    const { email, password, displayName, phone, pin, role = 'PLAYER' } = req.body;
 
     if (await prisma.user.findUnique({ where: { email } })) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
 
     const user = await prisma.user.create({
-      data: { email, passwordHash, displayName, phone, role },
-      select: { id: true, email: true, displayName: true, phone: true, role: true, whatsappEnabled: true }
+      data: { email, passwordHash, displayName, phone, pin: pinHash, role },
+      select: { id: true, email: true, displayName: true, phone: true, role: true, subscription: true, whatsappEnabled: true }
     });
 
     const token = generateToken(user.id);
@@ -71,7 +73,7 @@ router.post('/login', [
       await prisma.user.update({ where: { id: user.id }, data: { rememberToken } });
     }
 
-    const { passwordHash: _, ...safeUser } = user;
+    const { passwordHash: _, pin: __, ...safeUser } = user;
     res.json({ user: safeUser, token, rememberToken });
   } catch (err) { next(err); }
 });
@@ -90,14 +92,37 @@ router.post('/auto-login', async (req, res, next) => {
     const newRememberToken = generateRememberToken(user.id);
     await prisma.user.update({ where: { id: user.id }, data: { rememberToken: newRememberToken } });
 
-    const { passwordHash: _, ...safeUser } = user;
+    const { passwordHash: _, pin: __, ...safeUser } = user;
     res.json({ user: safeUser, token, rememberToken: newRememberToken });
   } catch (err) {
     return res.status(401).json({ error: 'Token expired. Please login.' });
   }
 });
 
+// ─── PIN VERIFY (quick unlock) ──────────────────────────
+router.post('/verify-pin', [body('pin').isLength({ min: 4, max: 6 })], async (req, res, next) => {
+  try {
+    const { pin, userId } = req.body;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.pin) return res.status(400).json({ error: 'No PIN set' });
 
+    const valid = await bcrypt.compare(pin, user.pin);
+    if (!valid) return res.status(401).json({ error: 'Invalid PIN' });
+
+    const token = generateToken(user.id, '30d');
+    const { passwordHash: _, pin: __, ...safeUser } = user;
+    res.json({ user: safeUser, token });
+  } catch (err) { next(err); }
+});
+
+// ─── SET/UPDATE PIN ─────────────────────────────────────
+router.post('/set-pin', authenticate, [body('pin').isLength({ min: 4, max: 6 })], async (req, res, next) => {
+  try {
+    const pinHash = await bcrypt.hash(req.body.pin, 10);
+    await prisma.user.update({ where: { id: req.user.id }, data: { pin: pinHash } });
+    res.json({ message: 'PIN set successfully' });
+  } catch (err) { next(err); }
+});
 
 // ─── GET PROFILE ────────────────────────────────────────
 router.get('/me', authenticate, async (req, res) => {

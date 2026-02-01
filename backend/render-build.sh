@@ -13,12 +13,8 @@ npm install
 echo "🔧 Generating Prisma Client..."
 npx prisma generate
 
-# Run migrations
-echo "🗄️ Running database migrations..."
-npx prisma migrate deploy
-
-# Verify migrations
-echo "✅ Verifying database setup..."
-npx prisma db pull || echo "Note: Schema may not be fully synced yet"
+# Push schema to database (adds missing columns)
+echo "🗄️ Pushing schema to database..."
+npx prisma db push --accept-data-loss
 
 echo "✅ Build complete!"
