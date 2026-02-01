@@ -66,6 +66,8 @@ const sendWhatsAppMessage = async (to, message, type = 'text') => {
   }
 
   try {
+    console.log(`📱 Sending WhatsApp to ${formattedPhone}:`, message.substring(0, 100));
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -79,18 +81,25 @@ const sendWhatsAppMessage = async (to, message, type = 'text') => {
 
     if (!response.ok) {
       console.error('WhatsApp API Error:', data);
-      return { success: false, error: data.error?.message };
+      return { 
+        success: false, 
+        reason: 'api_error',
+        error: data 
+      };
     }
 
-    console.log(`WhatsApp message sent to ${formattedPhone}`);
-    return {
-      success: true,
-      messageId: data.messages?.[0]?.id,
-      data
+    console.log(`✅ WhatsApp sent successfully to ${formattedPhone}. Message ID: ${data.messages?.[0]?.id}`);
+    return { 
+      success: true, 
+      messageId: data.messages?.[0]?.id 
     };
   } catch (error) {
     console.error('WhatsApp send error:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      reason: 'network_error',
+      error: error.message 
+    };
   }
 };
 
