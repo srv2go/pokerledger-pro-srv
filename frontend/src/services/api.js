@@ -76,6 +76,11 @@ export const authApi = {
     body: data,
   }),
 
+  updateNotificationPreferences: (notificationsEnabled) => request('/auth/profile/notifications', {
+    method: 'PATCH',
+    body: { notificationsEnabled },
+  }),
+
   refreshToken: () => request('/auth/refresh', {
     method: 'POST',
   }),
@@ -124,6 +129,34 @@ export const gamesApi = {
     method: 'POST',
     body: { playerIds, sendNotification },
   }),
+
+  exportExcel: (id) => {
+    const token = getToken();
+    const url = `${API_BASE}/games/${id}/export`;
+    
+    return fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }).then(res => {
+      if (!res.ok) throw new Error('Export failed');
+      return res.blob();
+    }).then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `game_export_${id}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    });
+  },
+
+  updateExpenses: (id, expenses) => request(`/games/${id}`, {
+    method: 'PUT',
+    body: expenses,
+  }),
 };
 
 // Players API
@@ -149,6 +182,11 @@ export const playersApi = {
     const query = new URLSearchParams(params).toString();
     return request(`/players/${id}/history${query ? `?${query}` : ''}`);
   },
+
+  sendReminder: (id, balanceData) => request(`/players/${id}/send-reminder`, {
+    method: 'POST',
+    body: balanceData,
+  }),
 };
 
 // Transactions API - Host records all, players get WhatsApp notifications
@@ -204,6 +242,11 @@ export const transactionsApi = {
     const query = new URLSearchParams(params).toString();
     return request(`/transactions/player/${playerId}${query ? `?${query}` : ''}`);
   },
+
+  bulkCashout: (data) => request('/transactions/bulk-cashout', {
+    method: 'POST',
+    body: data,
+  }),
 };
 
 // Notifications API
@@ -228,8 +271,29 @@ export const notificationsApi = {
   getPreferences: () => request('/notifications/preferences'),
 
   updatePreferences: (preferences) => request('/notifications/preferences', {
-    method: 'PUT',
-    body: { preferences },
+// Messages API
+export const messagesApi = {
+  list: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/messages${query ? `?${query}` : ''}`);
+  },
+
+  send: (messageData) => request('/messages', {
+    method: 'POST',
+    body: messageData,
+  }),
+
+  markRead: (id) => request(`/messages/${id}/read`, {
+    method: 'PATCH',
+  }),
+
+  delete: (id) => request(`/messages/${id}`, {
+    method: 'DELETE',
+  }),
+};
+
+export { ApiError };
+export default { authApi, gamesApi, playersApi, transactionsApi, notificationsApi, message
   }),
 };
 

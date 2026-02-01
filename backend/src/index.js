@@ -11,6 +11,7 @@ const gameRoutes = require('./routes/games');
 const playerRoutes = require('./routes/players');
 const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = require('./routes/notifications');
+const messageRoutes = require('./routes/messages');
 const webhookRoutes = require('./routes/webhooks');
 const { authenticateToken } = require('./middleware/auth');
 const { setupWebSocket } = require('./services/websocket');
@@ -59,6 +60,7 @@ app.use('/api/games', authenticateToken, gameRoutes);
 app.use('/api/players', authenticateToken, playerRoutes);
 app.use('/api/transactions', authenticateToken, transactionRoutes);
 app.use('/api/notifications', authenticateToken, notificationRoutes);
+app.use('/api/messages', authenticateToken, messageRoutes);
 
 // Webhook routes (no auth - verified by token)
 app.use('/webhooks', webhookRoutes);

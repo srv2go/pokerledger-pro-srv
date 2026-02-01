@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
 import { Card, Button, Input, Avatar, LoadingScreen } from '../components/ui';
-import { ArrowLeft, User, Mail, Phone, LogOut, Edit2, Check, X } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, LogOut, Edit2, Check, X, Bell, BellOff } from 'lucide-react';
 
 export default function Profile() {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
@@ -68,6 +69,22 @@ export default function Profile() {
     if (confirm('Are you sure you want to logout?')) {
       logout();
       navigate('/login');
+    }
+  };
+
+  const toggleNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const newValue = !user.notificationsEnabled;
+      const updated = await authApi.updateNotificationPreferences(newValue);
+      updateUser(updated.user);
+      setSuccess(newValue ? 'Notifications enabled' : 'Notifications disabled');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message || 'Failed to update notification settings');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setNotificationsLoading(false);
     }
   };
 
@@ -215,6 +232,47 @@ export default function Profile() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-400">Account Type</span>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Subscription</span>
+              <span className="text-white font-medium capitalize">
+                {user.subscriptionTier || 'FREE'}
+              </span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Notification Settings */}
+        <Card>
+          <h3 className="font-semibold text-white mb-4">Notification Settings</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {user.notificationsEnabled ? (
+                  <Bell className="w-5 h-5 text-green-400" />
+                ) : (
+                  <BellOff className="w-5 h-5 text-gray-400" />
+                )}
+                <div>
+                  <p className="text-white font-medium">WhatsApp Notifications</p>
+                  <p className="text-sm text-gray-400">
+                    Receive game updates via WhatsApp
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant={user.notificationsEnabled ? "primary" : "secondary"}
+                onClick={toggleNotifications}
+                disabled={notificationsLoading}
+              >
+                {user.notificationsEnabled ? 'On' : 'Off'}
+              </Button>
+            </div>
+            {!user.phone && (
+              <p className="text-sm text-yellow-400">
+                ⚠️ Add a phone number to receive notifications
+              </p>
+            )}
               <span className="text-white font-medium capitalize">
                 {user.role?.toLowerCase()}
               </span>

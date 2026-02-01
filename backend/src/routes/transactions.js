@@ -446,4 +446,172 @@ router.get('/player/:playerId', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/transactions/bulk-cashout
+ * Cash out entire table with expenses
+ */
+router.post('/bulk-cashout', [
+  body('gameId').isUUID(),
+  body('cashouts').isArray({ min: 1 }),
+  body('cashouts.*.playerId').isUUID(),
+  body('cashouts.*.amount').isFloat({ min: 0 }),
+  body('foodExpense').optional().isFloat({ min: 0 }),
+  body('rentExpense').optional().isFloat({ min: 0 }),
+  body('dealerExpense').optional().isFloat({ min: 0 }),
+  body('miscExpense').optional().isFloat({ min: 0 }),
+  body('sendNotifications').optional().isBoolean()
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { 
+      gameId, 
+      cashouts, 
+      foodExpense = 0, 
+      rentExpense = 0, 
+      dealerExpense = 0, 
+      miscExpense = 0,
+      sendNotifications = true 
+    } = req.body;
+
+    // Verify user is game host
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      include: {
+        players: {
+          include: {
+            player: {
+              select: { id: true, displayName: true, phone: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!game) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    if (game.hostId !== req.user.id) {
+      return res.status(403).json({ error: 'Only host can perform bulk cash-out' });
+    }
+
+    // Update game expenses
+    await prisma.game.update({
+      where: { id: gameId },
+      data: {
+        foodExpense: parseFloat(foodExpense),
+        rentExpense: parseFloat(rentExpense),
+        dealerExpense: parseFloat(dealerExpense),
+        miscExpense: parseFloat(miscExpense),
+        status: 'COMPLETED',
+        endTime: new Date()
+      }
+    });
+
+    const results = [];
+    const errors = [];
+
+    // Process each cashout
+    for (const cashout of cashouts) {
+      try {
+        const { playerId, amount } = cashout;
+
+        // Find active game player record
+        const existingGamePlayer = await prisma.gamePlayer.findFirst({
+          where: { 
+            gameId, 
+            playerId,
+            status: { in: ['ACTIVE', 'INVITED'] }
+          },
+          include: {
+            player: {
+              select: { id: true, displayName: true, phone: true }
+            }
+          },
+          orderBy: { joinedAt: 'desc' }
+        });
+
+        if (!existingGamePlayer) {
+          errors.push({ playerId, error: 'Player not found in game' });
+          continue;
+        }
+
+        const totalInvested = parseFloat(existingGamePlayer.totalInvested);
+        const profit = amount - totalInvested;
+
+        // Update player status
+        const gamePlayer = await prisma.gamePlayer.update({
+          where: { id: existingGamePlayer.id },
+          data: {
+            cashOut: amount,
+            finalBalance: profit,
+            profitLoss: profit,
+            status: 'CASHED_OUT',
+            leftAt: new Date()
+          }
+        });
+
+        // Create transaction
+        const transaction = await prisma.transaction.create({
+          data: {
+            gameId,
+            playerId,
+            type: 'CASH_OUT',
+            amount
+          }
+        });
+
+        // Send WhatsApp notification
+        if (sendNotifications && existingGamePlayer.player?.phone) {
+          notifyCashOut(
+            existingGamePlayer.player, 
+            game, 
+            amount, 
+            totalInvested
+          ).catch(err => {
+            console.warn(`WhatsApp notification failed for ${playerId}:`, err.message);
+          });
+        }
+
+        results.push({
+          playerId,
+          playerName: existingGamePlayer.player.displayName,
+          amount,
+          profit,
+          success: true
+        });
+      } catch (err) {
+        console.error(`Error processing cashout for player ${cashout.playerId}:`, err);
+        errors.push({ 
+          playerId: cashout.playerId, 
+          error: err.message 
+        });
+      }
+    }
+
+    // Broadcast game completion
+    broadcastGameUpdate(gameId, { status: 'COMPLETED', endTime: new Date() });
+
+    res.json({
+      success: true,
+      message: 'Bulk cash-out completed',
+      results,
+      errors,
+      expenses: {
+        food: foodExpense,
+        rent: rentExpense,
+        dealer: dealerExpense,
+        misc: miscExpense,
+        total: parseFloat(foodExpense) + parseFloat(rentExpense) + parseFloat(dealerExpense) + parseFloat(miscExpense)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

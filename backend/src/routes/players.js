@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const axios = require('axios');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -245,6 +246,112 @@ router.get('/:id/history', async (req, res, next) => {
       history: historyWithStats,
       pagination: { total, limit: parseInt(limit), offset: parseInt(offset) }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/players/:id/send-reminder
+ * Send payment reminder to player via WhatsApp
+ */
+router.post('/:id/send-reminder', [
+  body('balance').isNumeric(),
+  body('totalBuyIn').isNumeric(),
+  body('totalCashOut').isNumeric()
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { balance, totalBuyIn, totalCashOut } = req.body;
+    const hostUser = req.user;
+
+    // Verify user is HOST, ADMIN, or SUPER_ADMIN
+    if (!['HOST', 'ADMIN', 'SUPER_ADMIN'].includes(hostUser.role)) {
+      return res.status(403).json({ error: 'Only hosts and admins can send reminders' });
+    }
+
+    // Get player details
+    const player = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, displayName: true, phone: true, notificationsEnabled: true }
+    });
+
+    if (!player) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    if (!player.phone) {
+      return res.status(400).json({ error: 'Player has no phone number' });
+    }
+
+    if (player.notificationsEnabled === false) {
+      return res.status(400).json({ error: 'Player has disabled notifications' });
+    }
+
+    // Send WhatsApp message
+    const message = balance < 0
+      ? `💰 Payment Reminder\n\nHi ${player.displayName},\n\nYour account summary:\n📊 Total Buy-in: ${Math.abs(totalBuyIn)} points\n💵 Total Cash-out: ${totalCashOut} points\n⚠️ Balance Due: ${Math.abs(balance)} points\n\nPlease settle your balance at your earliest convenience.\n\nRegards,\n${hostUser.displayName}`
+      : `✅ Account Summary\n\nHi ${player.displayName},\n\nYour account summary:\n📊 Total Buy-in: ${totalBuyIn} points\n💵 Total Cash-out: ${totalCashOut} points\n✨ Credit Balance: +${balance} points\n\nYour account is in good standing!\n\nRegards,\n${hostUser.displayName}`;
+
+    try {
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          to: player.phone,
+          type: 'text',
+          text: { body: message }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // Log notification
+      await prisma.notification.create({
+        data: {
+          userId: player.id,
+          type: 'REMINDER',
+          message,
+          channel: 'WHATSAPP',
+          status: 'SENT',
+          sentAt: new Date()
+        }
+      });
+
+      res.json({
+        success: true,
+        message: 'Reminder sent successfully',
+        messageId: response.data.messages?.[0]?.id
+      });
+    } catch (whatsappError) {
+      console.error('WhatsApp API Error:', whatsappError.response?.data || whatsappError.message);
+      
+      // Log failed notification
+      await prisma.notification.create({
+        data: {
+          userId: player.id,
+          type: 'REMINDER',
+          message,
+          channel: 'WHATSAPP',
+          status: 'FAILED',
+          error: whatsappError.response?.data?.error?.message || whatsappError.message
+        }
+      });
+
+      return res.status(500).json({
+        error: 'Failed to send WhatsApp message',
+        details: whatsappError.response?.data?.error?.message || whatsappError.message
+      });
+    }
   } catch (error) {
     next(error);
   }

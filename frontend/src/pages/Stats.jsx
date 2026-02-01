@@ -86,11 +86,13 @@ export default function Stats() {
     try {
       setSending(prev => ({ ...prev, [player.id]: true }));
       
-      // TODO: Implement send reminder API
-      // For now, just show success message
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await playersApi.sendReminder(player.id, {
+        balance: player.balance,
+        totalBuyIn: player.totalBuyIn,
+        totalCashOut: player.totalCashOut
+      });
       
-      alert(`Reminder sent to ${player.displayName}`);
+      alert(`Reminder sent to ${player.displayName} via WhatsApp!`);
     } catch (err) {
       alert(`Failed to send reminder: ${err.message}`);
     } finally {

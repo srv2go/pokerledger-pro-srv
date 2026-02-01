@@ -260,11 +260,48 @@ router.put('/profile', [
         phone: true,
         role: true,
         paymentMethods: true,
-        preferences: true
+        preferences: true,
+        notificationsEnabled: true,
+        subscriptionTier: true
       }
     });
 
     res.json({ user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/auth/profile/notifications
+ * Update notification preferences
+ */
+router.patch('/profile/notifications', [
+  body('notificationsEnabled').isBoolean()
+], async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { notificationsEnabled } = req.body;
+
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { notificationsEnabled },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        phone: true,
+        role: true,
+        notificationsEnabled: true,
+        subscriptionTier: true
+      }
+    });
+
+    res.json({ user, message: 'Notification preferences updated' });
   } catch (error) {
     next(error);
   }

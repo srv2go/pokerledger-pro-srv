@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const { requireGameHost, requireGameParticipant } = require('../middleware/auth');
 const { sendGameInvitation } = require('../services/whatsapp');
 const { broadcastGameUpdate, notifyGameStatus } = require('../services/websocket');
+const ExcelJS = require('exceljs');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -518,5 +519,182 @@ function calculateGameStats(game) {
     rebuyCount: rebuys
   };
 }
+
+/**
+ * GET /api/games/:id/export
+ * Export game data to Excel
+ */
+router.get('/:id/export', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Fetch complete game data
+    const game = await prisma.game.findUnique({
+      where: { id },
+      include: {
+        host: {
+          select: { id: true, displayName: true, email: true }
+        },
+        players: {
+          include: {
+            player: {
+              select: { id: true, displayName: true, email: true, phone: true }
+            }
+          },
+          orderBy: { seatNumber: 'asc' }
+        },
+        transactions: {
+          include: {
+            player: {
+              select: { displayName: true }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        }
+      }
+    });
+
+    if (!game) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    // Verify access
+    const isHost = game.hostId === userId;
+    const isParticipant = game.players.some(p => p.playerId === userId);
+    if (!isHost && !isParticipant) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Create Excel workbook
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'PokerLedger Pro';
+    workbook.created = new Date();
+
+    // Summary Sheet
+    const summarySheet = workbook.addWorksheet('Game Summary');
+    summarySheet.columns = [
+      { header: 'Field', key: 'field', width: 25 },
+      { header: 'Value', key: 'value', width: 40 }
+    ];
+
+    summarySheet.addRows([
+      { field: 'Game Name', value: game.name },
+      { field: 'Game Type', value: game.gameType },
+      { field: 'Host', value: game.host.displayName },
+      { field: 'Location', value: game.location || 'N/A' },
+      { field: 'Start Time', value: game.startTime?.toLocaleString() || 'N/A' },
+      { field: 'End Time', value: game.endTime?.toLocaleString() || 'N/A' },
+      { field: 'Status', value: game.status },
+      { field: 'Buy-in Amount', value: `${game.buyInAmount} points` },
+      { field: 'Blinds', value: `${game.blindsSmall}/${game.blindsBig}` },
+      { field: 'Rake %', value: `${game.rakePercentage}%` },
+      { field: 'Float Amount', value: `${game.floatAmount || 0} points` },
+      { field: 'Food Expense', value: `${game.foodExpense || 0} points` },
+      { field: 'Rent Expense', value: `${game.rentExpense || 0} points` },
+      { field: 'Dealer Expense', value: `${game.dealerExpense || 0} points` },
+      { field: 'Misc Expense', value: `${game.miscExpense || 0} points` }
+    ]);
+
+    summarySheet.getRow(1).font = { bold: true };
+    summarySheet.getColumn('field').font = { bold: true };
+
+    // Players Sheet
+    const playersSheet = workbook.addWorksheet('Players');
+    playersSheet.columns = [
+      { header: 'Seat', key: 'seat', width: 8 },
+      { header: 'Player Name', key: 'name', width: 25 },
+      { header: 'Status', key: 'status', width: 15 },
+      { header: 'Buy-in', key: 'buyIn', width: 15 },
+      { header: 'Total Invested', key: 'invested', width: 15 },
+      { header: 'Cash Out', key: 'cashOut', width: 15 },
+      { header: 'Profit/Loss', key: 'profitLoss', width: 15 },
+      { header: 'Joined At', key: 'joinedAt', width: 20 }
+    ];
+
+    game.players.forEach(gp => {
+      const profitLoss = gp.profitLoss || (gp.cashOut ? parseFloat(gp.cashOut) - parseFloat(gp.totalInvested) : 0);
+      playersSheet.addRow({
+        seat: gp.seatNumber || '-',
+        name: gp.player.displayName,
+        status: gp.status,
+        buyIn: `${gp.initialBuyIn} pts`,
+        invested: `${gp.totalInvested} pts`,
+        cashOut: gp.cashOut ? `${gp.cashOut} pts` : '-',
+        profitLoss: `${profitLoss >= 0 ? '+' : ''}${profitLoss} pts`,
+        joinedAt: gp.joinedAt?.toLocaleString() || '-'
+      });
+    });
+
+    playersSheet.getRow(1).font = { bold: true };
+
+    // Transactions Sheet
+    const transactionsSheet = workbook.addWorksheet('Transactions');
+    transactionsSheet.columns = [
+      { header: 'Time', key: 'time', width: 20 },
+      { header: 'Type', key: 'type', width: 15 },
+      { header: 'Player', key: 'player', width: 25 },
+      { header: 'Amount', key: 'amount', width: 15 },
+      { header: 'Payment Method', key: 'method', width: 20 },
+      { header: 'Notes', key: 'notes', width: 40 }
+    ];
+
+    game.transactions.forEach(tx => {
+      transactionsSheet.addRow({
+        time: tx.createdAt?.toLocaleString() || '-',
+        type: tx.type,
+        player: tx.player.displayName,
+        amount: `${tx.amount} pts`,
+        method: tx.paymentMethod || '-',
+        notes: tx.notes || '-'
+      });
+    });
+
+    transactionsSheet.getRow(1).font = { bold: true };
+
+    // Calculate totals
+    const totalBuyIn = game.players.reduce((sum, p) => sum + parseFloat(p.totalInvested || 0), 0);
+    const totalCashOut = game.players.reduce((sum, p) => sum + parseFloat(p.cashOut || 0), 0);
+    const calculatedRake = totalBuyIn - totalCashOut;
+    const expectedRake = (totalBuyIn * (game.rakePercentage / 100));
+
+    // Reconciliation Sheet
+    const reconSheet = workbook.addWorksheet('Reconciliation');
+    reconSheet.columns = [
+      { header: 'Category', key: 'category', width: 30 },
+      { header: 'Amount', key: 'amount', width: 20 }
+    ];
+
+    reconSheet.addRows([
+      { category: 'Total Buy-in', amount: `${totalBuyIn} pts` },
+      { category: 'Total Cash-out', amount: `${totalCashOut} pts` },
+      { category: 'Float Amount', amount: `${game.floatAmount || 0} pts` },
+      { category: '', amount: '' },
+      { category: 'Calculated Rake', amount: `${calculatedRake} pts` },
+      { category: 'Expected Rake (' + game.rakePercentage + '%)', amount: `${expectedRake.toFixed(2)} pts` },
+      { category: 'Difference', amount: `${(calculatedRake - expectedRake).toFixed(2)} pts` },
+      { category: '', amount: '' },
+      { category: 'Food Expense', amount: `${game.foodExpense || 0} pts` },
+      { category: 'Rent Expense', amount: `${game.rentExpense || 0} pts` },
+      { category: 'Dealer Expense', amount: `${game.dealerExpense || 0} pts` },
+      { category: 'Misc Expense', amount: `${game.miscExpense || 0} pts` },
+      { category: 'Total Expenses', amount: `${(parseFloat(game.foodExpense || 0) + parseFloat(game.rentExpense || 0) + parseFloat(game.dealerExpense || 0) + parseFloat(game.miscExpense || 0))} pts` },
+      { category: '', amount: '' },
+      { category: 'Net Rake (After Expenses)', amount: `${(calculatedRake - (parseFloat(game.foodExpense || 0) + parseFloat(game.rentExpense || 0) + parseFloat(game.dealerExpense || 0) + parseFloat(game.miscExpense || 0)))} pts` }
+    ]);
+
+    reconSheet.getRow(1).font = { bold: true };
+    reconSheet.getColumn('category').font = { bold: true };
+
+    // Send file
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=PokerGame_${game.name.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;

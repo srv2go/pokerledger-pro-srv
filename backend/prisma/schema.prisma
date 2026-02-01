@@ -37,6 +37,8 @@ model User {
   transactions    Transaction[]
   notifications   Notification[]
   sentTopUpRequests TopUpRequest[] @relation("RequestedBy")
+  messages        Message[]      @relation("MessageRecipient")
+  sentMessages    Message[]      @relation("MessageSender")
   
   @@map("users")
 }
@@ -85,6 +87,7 @@ model Game {
   players         GamePlayer[]
   transactions    Transaction[]
   topUpRequests   TopUpRequest[]
+  messages        Message[]
 
   @@map("games")
 }
@@ -247,6 +250,7 @@ enum NotificationType {
   GAME_ENDED
   BALANCE_REMINDER
   GAME_SUMMARY
+  REMINDER
 }
 
 enum NotificationChannel {
@@ -262,4 +266,34 @@ enum NotificationStatus {
   DELIVERED
   READ
   FAILED
+}
+
+// In-app messaging system for PREMIUM users
+model Message {
+  id              String    @id @default(uuid())
+  senderId        String
+  recipientId     String
+  gameId          String?   // Optional - if message is game-related
+  subject         String?
+  body            String
+  isRead          Boolean   @default(false)
+  priority        MessagePriority @default(NORMAL)
+  createdAt       DateTime  @default(now())
+  readAt          DateTime?
+
+  // Relations
+  sender          User      @relation("MessageSender", fields: [senderId], references: [id])
+  recipient       User      @relation("MessageRecipient", fields: [recipientId], references: [id])
+  game            Game?     @relation(fields: [gameId], references: [id])
+
+  @@index([recipientId, isRead])
+  @@index([gameId])
+  @@map("messages")
+}
+
+enum MessagePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
