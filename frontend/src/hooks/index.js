@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { gamesApi } from '../services/api';
 import wsService from '../services/websocket';
+import { formatPoints, formatProfitLoss } from '../utils/currency';
 
 /**
  * Hook for managing game state with real-time updates
@@ -148,22 +149,13 @@ export const useToast = () => {
 };
 
 /**
- * Format currency
+ * Format currency - now uses points system
  */
 export const formatCurrency = (amount, showSign = false) => {
-  const num = parseFloat(amount) || 0;
-  const formatted = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(num));
-
-  if (showSign && num !== 0) {
-    return num > 0 ? `+${formatted}` : `-${formatted}`;
+  if (showSign) {
+    return formatProfitLoss(amount);
   }
-  
-  return num < 0 ? `-${formatted}` : formatted;
+  return formatPoints(amount);
 };
 
 /**
