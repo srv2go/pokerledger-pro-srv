@@ -8,6 +8,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import HostDashboard from './pages/HostDashboard';
 import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
 import Profile from './pages/Profile';
@@ -79,6 +80,7 @@ function AppRoutes() {
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/host-dashboard" element={<HostDashboard />} />
         <Route path="/games/new" element={<CreateGame />} />
         <Route path="/games/:id" element={<GameDetail />} />
         <Route path="/players" element={<Players />} />
