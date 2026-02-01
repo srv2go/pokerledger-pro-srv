@@ -50,10 +50,21 @@ router.post('/whatsapp', async (req, res) => {
     for (const change of changes) {
       const { value } = change;
 
-      // Handle message status updates (sent, delivered, read)
+      // Handle message status updates (sent, delivered, read, failed)
       if (value.statuses) {
         for (const status of value.statuses) {
           console.log(`WhatsApp message ${status.id}: ${status.status}`);
+          
+          // Log error details if message failed
+          if (status.status === 'failed' && status.errors) {
+            console.error('❌ WhatsApp message failed:');
+            status.errors.forEach(error => {
+              console.error(`  - Error ${error.code}: ${error.title}`);
+              console.error(`    Details: ${error.message || 'No details'}`);
+              console.error(`    Error data:`, error.error_data || 'None');
+            });
+          }
+          
           // Could update notification status in database here
         }
       }
