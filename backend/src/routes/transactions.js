@@ -513,7 +513,7 @@ router.post('/bulk-cashout', [
     });
 
     const results = [];
-    const errors = [];
+    const cashoutErrors = [];
 
     // Process each cashout
     for (const cashout of cashouts) {
@@ -536,7 +536,7 @@ router.post('/bulk-cashout', [
         });
 
         if (!existingGamePlayer) {
-          errors.push({ playerId, error: 'Player not found in game' });
+          cashoutErrors.push({ playerId, error: 'Player not found in game' });
           continue;
         }
 
@@ -586,7 +586,7 @@ router.post('/bulk-cashout', [
         });
       } catch (err) {
         console.error(`Error processing cashout for player ${cashout.playerId}:`, err);
-        errors.push({ 
+        cashoutErrors.push({ 
           playerId: cashout.playerId, 
           error: err.message 
         });
@@ -600,7 +600,7 @@ router.post('/bulk-cashout', [
       success: true,
       message: 'Bulk cash-out completed',
       results,
-      errors,
+      errors: cashoutErrors,
       expenses: {
         food: foodExpense,
         rent: rentExpense,
