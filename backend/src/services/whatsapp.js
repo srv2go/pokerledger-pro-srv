@@ -114,14 +114,12 @@ const notifyBuyIn = async (player, game, amount, isRebuy = false) => {
   const type = isRebuy ? 'Re-buy' : 'Buy-in';
   const emoji = isRebuy ? '🔄' : '💵';
   
-  const message = `${emoji} *${type} Recorded*
-
-${formatCurrency(amount)} ${type.toLowerCase()} for *${game.name}*
-
-Game: ${game.gameType?.replace('_', ' ') || 'Texas Hold\'em'}
-Blinds: $${game.blindsSmall}/$${game.blindsBig}
-
-Good luck at the table! 🍀`;
+  const points = Math.floor(amount);
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
+  const message = `${emoji} ${type} recorded
+${points} points
+Time: ${timestamp}`;
 
   const result = await sendWhatsAppMessage(player.phone, message);
 
@@ -132,7 +130,7 @@ Good luck at the table! 🍀`;
         userId: player.id,
         type: 'BALANCE_REMINDER',
         title: `${type} Recorded`,
-        message: `${formatCurrency(amount)} ${type.toLowerCase()} for ${game.name}`,
+        message: `${points} points recorded`,
         channel: 'WHATSAPP',
         status: result.success ? 'SENT' : 'FAILED',
         externalId: result.messageId,
@@ -153,13 +151,14 @@ const notifyTopUp = async (player, game, amount, newTotal) => {
     return { success: false, reason: 'no_phone' };
   }
 
-  const message = `🎰 *Top-Up Added*
-
-${formatCurrency(amount)} added to your stack in *${game.name}*
-
-Your total invested: ${formatCurrency(newTotal)}
-
-Keep playing! 🃏`;
+  const points = Math.floor(amount);
+  const balance = Math.floor(newTotal);
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
+  const message = `💵 Top-up credited
+${points} points
+Total invested: ${balance} points
+Time: ${timestamp}`;
 
   const result = await sendWhatsAppMessage(player.phone, message);
 
@@ -168,8 +167,8 @@ Keep playing! 🃏`;
       data: {
         userId: player.id,
         type: 'TOP_UP_APPROVED',
-        title: 'Top-Up Added',
-        message: `${formatCurrency(amount)} added in ${game.name}`,
+        title: 'Top-Up Credited',
+        message: `${points} points credited`,
         channel: 'WHATSAPP',
         status: result.success ? 'SENT' : 'FAILED',
         externalId: result.messageId,
@@ -190,21 +189,14 @@ const notifyCashOut = async (player, game, cashOutAmount, totalInvested) => {
     return { success: false, reason: 'no_phone' };
   }
 
-  const profit = cashOutAmount - totalInvested;
-  const isProfit = profit >= 0;
-  const emoji = isProfit ? '🎉' : '😔';
-  const resultText = isProfit ? 'Won' : 'Lost';
+  const debited = Math.floor(cashOutAmount);
+  const balance = Math.floor(profit);
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   
-  const message = `${emoji} *Cash-Out Complete*
-
-Game: *${game.name}*
-
-💰 Total Invested: ${formatCurrency(totalInvested)}
-💵 Cash Out: ${formatCurrency(cashOutAmount)}
-${isProfit ? '📈' : '📉'} ${resultText}: ${formatCurrency(Math.abs(profit))}
-
-${isProfit ? 'Congratulations! 🏆' : 'Better luck next time! 🍀'}
-
+  const message = `💸 Cash-out complete
+Debited: ${debited} points
+Balance: ${balance >= 0 ? '+' : ''}${balance} points
+Time: ${timestamp}
 Thanks for playing!`;
 
   const result = await sendWhatsAppMessage(player.phone, message);
@@ -215,7 +207,7 @@ Thanks for playing!`;
         userId: player.id,
         type: 'GAME_SUMMARY',
         title: 'Cash-Out Complete',
-        message: `${resultText} ${formatCurrency(Math.abs(profit))} in ${game.name}`,
+        message: `${debited} points debited, balance ${balance >= 0 ? '+' : ''}${balance} points`,
         channel: 'WHATSAPP',
         status: result.success ? 'SENT' : 'FAILED',
         externalId: result.messageId,

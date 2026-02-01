@@ -1,5 +1,16 @@
 {
   "appId": "com.pokerledger.pro",
   "appName": "PokerLedger Pro",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    },
+    "BackButton": {
+      "enabled": true
+    }
+  },
+  "android": {
+    "allowMixedContent": true
+  }
 }

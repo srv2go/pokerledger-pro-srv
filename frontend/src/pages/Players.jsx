@@ -51,6 +51,8 @@ export default function Players() {
     <div className="min-h-screen bg-gray-950 pb-6">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-md border-b border-gray-800">
+        {/* Safe area padding for status bar */}
+        <div className="h-safe-top bg-gray-900/95" />
         <div className="px-4 py-4 flex items-center justify-between">
           <button
             onClick={() => navigate('/')}
@@ -61,9 +63,10 @@ export default function Players() {
           <h1 className="font-bold text-white">Players</h1>
           <button
             onClick={() => setShowAddModal(true)}
-            className="p-2 rounded-lg hover:bg-gray-800 text-felt-400"
+            className="p-2 -mr-2 rounded-lg bg-felt-500 hover:bg-felt-600 text-white shadow-lg"
+            aria-label="Add player"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-6 h-6" />
           </button>
         </div>
       </header>
