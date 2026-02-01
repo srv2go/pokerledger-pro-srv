@@ -167,14 +167,21 @@ router.post('/top-up', [
     }
 
     // Update player's total invested
-    const gamePlayer = await prisma.gamePlayer.update({
+    const gamePlayer = await prisma.gamePlayer.updateMany({
       where: {
-        gameId_playerId: { gameId, playerId }
+        gameId,
+        playerId,
+        status: { in: ['ACTIVE', 'INVITED'] }
       },
       data: {
         totalInvested: { increment: parseFloat(amount) },
         status: 'ACTIVE'
       }
+    });
+
+    // Fetch updated record
+    const updatedGamePlayer = await prisma.gamePlayer.findFirst({
+      where: { gameId, playerId, status: 'ACTIVE' }
     });
 
     // Create transaction record
@@ -189,14 +196,14 @@ router.post('/top-up', [
     });
 
     // Send WhatsApp notification
-    if (sendNotification && player.phone) {
-      notifyTopUp(player, game, amount, parseFloat(gamePlayer.totalInvested)).catch(err => {
+    if (sendNotification && player.phone && updatedGamePlayer) {
+      notifyTopUp(player, game, amount, parseFloat(updatedGamePlayer.totalInvested)).catch(err => {
         console.warn('WhatsApp notification failed:', err.message);
       });
     }
 
     // Broadcast update
-    notifyTransaction(gameId, { ...transaction, gamePlayer });
+    notifyTransaction(gameId, { ...transaction, gamePlayer: updatedGamePlayer });
 
     res.status(201).json({
       transaction,
@@ -241,13 +248,18 @@ router.post('/cash-out', [
     }
 
     // Get current game player record
-    const existingGamePlayer = await prisma.gamePlayer.findUnique({
-      where: { gameId_playerId: { gameId, playerId } },
+    const existingGamePlayer = await prisma.gamePlayer.findFirst({
+      where: { 
+        gameId, 
+        playerId,
+        status: { in: ['ACTIVE', 'INVITED'] }
+      },
       include: {
         player: {
           select: { id: true, displayName: true, phone: true }
         }
-      }
+      },
+      orderBy: { joinedAt: 'desc' }
     });
 
     if (!existingGamePlayer) {
@@ -259,10 +271,11 @@ router.post('/cash-out', [
 
     // Update player status
     const gamePlayer = await prisma.gamePlayer.update({
-      where: { gameId_playerId: { gameId, playerId } },
+      where: { id: existingGamePlayer.id },
       data: {
         cashOut: amount,
         finalBalance: profit,
+        profitLoss: profit,
         status: 'CASHED_OUT',
         leftAt: new Date()
       }
@@ -337,9 +350,18 @@ router.post('/adjustment', [
       return res.status(403).json({ error: 'Only host can make adjustments' });
     }
 
-    // Update player's total invested
+    // Update player's total invested - get active session
+    const existingGamePlayer = await prisma.gamePlayer.findFirst({
+      where: { gameId, playerId, status: 'ACTIVE' },
+      orderBy: { joinedAt: 'desc' }
+    });
+
+    if (!existingGamePlayer) {
+      return res.status(404).json({ error: 'Player not active in this game' });
+    }
+
     const gamePlayer = await prisma.gamePlayer.update({
-      where: { gameId_playerId: { gameId, playerId } },
+      where: { id: existingGamePlayer.id },
       data: {
         totalInvested: { increment: parseFloat(amount) }
       }

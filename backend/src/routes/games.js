@@ -446,13 +446,12 @@ router.post('/:id/invite', requireGameHost, [
 
     for (const playerId of playerIds) {
       try {
-        // Check if already invited
-        const existing = await prisma.gamePlayer.findUnique({
+        // Check if already invited or active
+        const existing = await prisma.gamePlayer.findFirst({
           where: {
-            gameId_playerId: {
-              gameId: game.id,
-              playerId
-            }
+            gameId: game.id,
+            playerId,
+            status: { in: ['ACTIVE', 'INVITED'] }
           }
         });
 
