@@ -1,116 +1,81 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoadingScreen } from './components/ui';
-import { App as CapacitorApp } from '@capacitor/app';
 
-// Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import HostDashboard from './pages/HostDashboard';
 import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
-import Profile from './pages/Profile';
 import Players from './pages/Players';
 import Stats from './pages/Stats';
+import History from './pages/History';
+import Inbox from './pages/Inbox';
+import Profile from './pages/Profile';
 
-// Android back button handler
-function useAndroidBackButton() {
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function PublicRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (user) return <Navigate to="/" replace />;
+  return children;
+}
+
+// Handle Android back button — prevent app close, navigate back instead
+function BackButtonHandler() {
   const navigate = useNavigate();
-  
+
   useEffect(() => {
-    const handleBackButton = () => {
-      if (window.history.length > 1) {
-        navigate(-1);
-        return;
-      }
-      CapacitorApp.exitApp();
+    // Push initial state so back button has history to go back to
+    const handlePopState = (e) => {
+      // The browser already navigated back via history
+      // React Router handles this through BrowserRouter
     };
 
-    CapacitorApp.addListener('backButton', handleBackButton);
+    window.addEventListener('popstate', handlePopState);
 
-    return () => {
-      CapacitorApp.removeAllListeners();
-    };
+    // For PWA: prevent default back behavior that closes the app
+    // Push an extra history entry so first back doesn't exit
+    if (window.history.length <= 2) {
+      window.history.pushState(null, '', window.location.href);
+    }
+
+    return () => window.removeEventListener('popstate', handlePopState);
   }, [navigate]);
-}
 
-// Protected Route wrapper
-function ProtectedRoute() {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <Outlet />;
-}
-
-// Auth Route wrapper (redirect if already logged in)
-function AuthRoute() {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
-
-  return <Outlet />;
-}
-
-function AppRoutes() {
-  useAndroidBackButton(); // Handle Android back button
-
-  return (
-    <Routes>
-      {/* Auth routes */}
-      <Route element={<AuthRoute />}>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-      </Route>
-
-      {/* Protected routes */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/host-dashboard" element={<HostDashboard />} />
-        <Route path="/games/new" element={<CreateGame />} />
-        <Route path="/games/:id" element={<GameDetail />} />
-        <Route path="/players" element={<Players />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/stats" element={<Stats />} />
-        {/* Placeholder routes */}
-        <Route path="/history" element={<ComingSoon title="History" />} />
-      </Route>
-
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-}
-
-// Placeholder component for routes not yet implemented
-function ComingSoon({ title }) {
-  return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <h1 className="text-2xl font-bold text-white mb-2">{title}</h1>
-      <p className="text-gray-400">Coming soon...</p>
-    </div>
-  );
+  return null;
 }
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <BackButtonHandler />
+        <Routes>
+          {/* Public */}
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+
+          {/* Protected */}
+          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/create-game" element={<ProtectedRoute><CreateGame /></ProtectedRoute>} />
+          <Route path="/game/:id" element={<ProtectedRoute><GameDetail /></ProtectedRoute>} />
+          <Route path="/players" element={<ProtectedRoute><Players /></ProtectedRoute>} />
+          <Route path="/stats" element={<ProtectedRoute><Stats /></ProtectedRoute>} />
+          <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
+          <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

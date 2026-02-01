@@ -1,188 +1,78 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Button, Input, Card, Select } from '../components/ui';
-import { Spade, User, Mail, Lock, Phone, Eye, EyeOff } from 'lucide-react';
+import { Button, Input } from '../components/ui';
+import { User, Crown } from 'lucide-react';
 
 export default function Register() {
-  const [formData, setFormData] = useState({
-    displayName: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
-    role: 'HOST',
-  });
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
+  const [role, setRole] = useState('PLAYER');
+  const [form, setForm] = useState({ displayName: '', email: '', password: '', phone: '', pin: '' });
   const [error, setError] = useState('');
-  
+  const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-
     setLoading(true);
-
     try {
-      await register({
-        displayName: formData.displayName,
-        email: formData.email,
-        phone: formData.phone,
-        password: formData.password,
-        role: formData.role,
-      });
-      navigate('/');
+      await register({ ...form, role });
+      navigate('/', { replace: true });
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center px-4 py-8 bg-gradient-to-b from-gray-900 via-gray-900 to-felt-900/20">
-      {/* Logo */}
-      <div className="flex flex-col items-center mb-6">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-felt-500 to-felt-700 flex items-center justify-center mb-3 shadow-lg shadow-felt-500/30">
-          <Spade className="w-8 h-8 text-white" />
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4 safe-top">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-felt-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><span className="text-3xl">🃏</span></div>
+          <h1 className="text-2xl font-bold text-white">Join PokerLedger</h1>
         </div>
-        <h1 className="text-2xl font-black text-white tracking-tight">
-          Poker<span className="text-felt-400">Ledger</span>
-        </h1>
-      </div>
 
-      {/* Form Card */}
-      <Card className="max-w-sm mx-auto w-full p-6">
-        <h2 className="text-xl font-bold text-white mb-6 text-center">Create Account</h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
-            <Input
-              name="displayName"
-              type="text"
-              placeholder="Your name"
-              value={formData.displayName}
-              onChange={handleChange}
-              className="pl-10"
-              required
-            />
-          </div>
-
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
-            <Input
-              name="email"
-              type="email"
-              placeholder="Email address"
-              value={formData.email}
-              onChange={handleChange}
-              className="pl-10"
-              required
-            />
-          </div>
-
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
-            <Input
-              name="phone"
-              type="tel"
-              placeholder="Phone (for WhatsApp)"
-              value={formData.phone}
-              onChange={handleChange}
-              className="pl-10"
-            />
-          </div>
-
-          <Select
-            name="role"
-            value={formData.role}
-            onChange={handleChange}
-            options={[
-              { value: 'HOST', label: 'Host - I run the games' },
-              { value: 'PLAYER', label: 'Player - I join games' },
-            ]}
-            placeholder="Select your role"
-          />
-
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
-            <Input
-              name="password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
-              value={formData.password}
-              onChange={handleChange}
-              className="pl-10 pr-10"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+        {step === 1 ? (
+          <div className="space-y-4">
+            <p className="text-center text-gray-400 mb-4">I want to...</p>
+            <button onClick={() => { setRole('HOST'); setStep(2); }}
+              className="w-full p-4 card flex items-center gap-4 hover:border-felt-500 transition">
+              <div className="w-12 h-12 bg-felt-600/20 rounded-xl flex items-center justify-center"><Crown className="w-6 h-6 text-felt-400" /></div>
+              <div className="text-left"><p className="font-bold text-white">Host Games</p><p className="text-sm text-gray-400">Create tables, manage players, track finances</p></div>
             </button>
+            <button onClick={() => { setRole('PLAYER'); setStep(2); }}
+              className="w-full p-4 card flex items-center gap-4 hover:border-blue-500 transition">
+              <div className="w-12 h-12 bg-blue-600/20 rounded-xl flex items-center justify-center"><User className="w-6 h-6 text-blue-400" /></div>
+              <div className="text-left"><p className="font-bold text-white">Play Games</p><p className="text-sm text-gray-400">View game history & personal stats</p></div>
+            </button>
+            <p className="text-center text-sm text-gray-500 mt-4">Already have an account? <Link to="/login" className="text-felt-400">Sign in</Link></p>
           </div>
-
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
-            <Input
-              name="confirmPassword"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Confirm password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              className="pl-10"
-              required
-            />
-          </div>
-
-          <Button 
-            type="submit" 
-            className="w-full" 
-            size="lg"
-            loading={loading}
-          >
-            Create Account
-          </Button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-gray-400 text-sm">
-            Already have an account?{' '}
-            <Link to="/login" className="text-felt-400 hover:text-felt-300 font-medium">
-              Sign in
-            </Link>
-          </p>
-        </div>
-      </Card>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <button type="button" onClick={() => setStep(1)} className="text-sm text-felt-400 mb-2">← Change role</button>
+            <div className="p-3 bg-gray-800 rounded-xl text-center">
+              <Badge role={role} />
+            </div>
+            {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400">{error}</div>}
+            <Input label="Display Name" value={form.displayName} onChange={set('displayName')} placeholder="Your name" required />
+            <Input label="Email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
+            <Input label="Password" type="password" value={form.password} onChange={set('password')} placeholder="Min 6 characters" required minLength={6} />
+            <Input label="Phone (for WhatsApp)" value={form.phone} onChange={set('phone')} placeholder="+1 555 123 4567" />
+            <Input label="PIN (optional quick unlock)" value={form.pin} onChange={set('pin')} placeholder="4-6 digit PIN" maxLength={6} />
+            <Button type="submit" loading={loading} className="w-full">Create Account</Button>
+          </form>
+        )}
+      </div>
     </div>
   );
+}
+
+function Badge({ role }) {
+  const r = { HOST: { label: 'Host', color: 'text-felt-400', bg: 'bg-felt-500/20' }, PLAYER: { label: 'Player', color: 'text-blue-400', bg: 'bg-blue-500/20' } }[role];
+  return <span className={`${r.bg} ${r.color} px-3 py-1 rounded-full text-sm font-semibold`}>Registering as {r.label}</span>;
 }

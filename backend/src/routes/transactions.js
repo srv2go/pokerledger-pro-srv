@@ -1,617 +1,257 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { requireMinRole } = require('../middleware/auth');
 const { notifyBuyIn, notifyTopUp, notifyCashOut } = require('../services/whatsapp');
 const { notifyTransaction, broadcastGameUpdate } = require('../services/websocket');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-/**
- * POST /api/transactions/buy-in
- * Host records initial buy-in or re-buy for a player
- * Sends WhatsApp notification to player as courtesy
- */
+// ─── BUY-IN (initial or re-buy, supports rejoin) ────────
 router.post('/buy-in', [
   body('gameId').isUUID(),
   body('playerId').isUUID(),
   body('amount').isFloat({ min: 0.01 }),
   body('paymentMethod').optional().isIn(['CASH', 'VENMO', 'PAYPAL', 'ZELLE', 'BANK_TRANSFER', 'OTHER']),
-  body('sendNotification').optional().isBoolean()
+  body('sendNotification').optional().isBoolean(),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { gameId, playerId, amount, paymentMethod = 'CASH', sendNotification = true } = req.body;
 
-    // Verify user is game host
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      include: {
-        players: {
-          where: { playerId }
-        }
-      }
-    });
-
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
-    if (game.hostId !== req.user.id) {
+    const game = await prisma.game.findUnique({ where: { id: gameId }, include: { players: { where: { playerId } } } });
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (game.hostId !== req.user.id && !['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Only host can record buy-ins' });
     }
 
-    // Get player details
-    const player = await prisma.user.findUnique({
-      where: { id: playerId },
-      select: { id: true, displayName: true, phone: true, email: true }
-    });
+    const player = await prisma.user.findUnique({ where: { id: playerId }, select: { id: true, displayName: true, phone: true, whatsappEnabled: true } });
+    if (!player) return res.status(404).json({ error: 'Player not found' });
 
-    if (!player) {
-      return res.status(404).json({ error: 'Player not found' });
-    }
-
-    // Check if player exists in game
     let gamePlayer = game.players[0];
-    const isFirstBuyIn = !gamePlayer;
+    let isRejoin = false;
+    let isFirstBuyIn = !gamePlayer;
 
     if (!gamePlayer) {
-      // Add player to game with initial buy-in
+      // Brand new player in this game
       gamePlayer = await prisma.gamePlayer.create({
-        data: {
-          gameId,
-          playerId,
-          initialBuyIn: amount,
-          totalInvested: amount,
-          status: 'ACTIVE'
-        }
+        data: { gameId, playerId, initialBuyIn: amount, totalInvested: amount, status: 'ACTIVE', session: 1 }
       });
-    } else {
-      // Update existing player's investment (re-buy)
+    } else if (gamePlayer.status === 'CASHED_OUT') {
+      // REJOIN: Player cashed out earlier and is rejoining
+      isRejoin = true;
+      isFirstBuyIn = false;
+      const newSession = gamePlayer.session + 1;
       gamePlayer = await prisma.gamePlayer.update({
         where: { id: gamePlayer.id },
         data: {
           totalInvested: { increment: parseFloat(amount) },
-          status: gamePlayer.status === 'ELIMINATED' ? 'ACTIVE' : gamePlayer.status
+          cashOut: null,           // Reset cashout for new session
+          finalBalance: null,
+          status: 'ACTIVE',
+          leftAt: null,
+          session: newSession,
+        }
+      });
+    } else {
+      // Regular re-buy / top-up for active player
+      isFirstBuyIn = false;
+      gamePlayer = await prisma.gamePlayer.update({
+        where: { id: gamePlayer.id },
+        data: {
+          totalInvested: { increment: parseFloat(amount) },
+          status: gamePlayer.status === 'ELIMINATED' ? 'ACTIVE' : gamePlayer.status,
         }
       });
     }
 
-    // Create transaction record
+    const txType = isFirstBuyIn ? 'BUY_IN' : (isRejoin ? 'RE_BUY' : 'RE_BUY');
+
     const transaction = await prisma.transaction.create({
-      data: {
-        gameId,
-        playerId,
-        type: isFirstBuyIn ? 'BUY_IN' : 'RE_BUY',
-        amount,
-        paymentMethod
-      },
-      include: {
-        player: {
-          select: { id: true, displayName: true, phone: true }
-        }
-      }
+      data: { gameId, playerId, type: txType, amount, paymentMethod, session: gamePlayer.session },
+      include: { player: { select: { id: true, displayName: true, phone: true } } }
     });
 
-    // Send WhatsApp notification to player (async, don't wait)
-    if (sendNotification && player.phone) {
-      notifyBuyIn(player, game, amount, !isFirstBuyIn).catch(err => {
-        console.warn('WhatsApp notification failed:', err.message);
-      });
+    // WhatsApp notification
+    if (sendNotification && player.phone && player.whatsappEnabled) {
+      notifyBuyIn(player, game, amount, !isFirstBuyIn).catch(console.warn);
     }
 
-    // Broadcast to game room via WebSocket
-    notifyTransaction(gameId, {
-      ...transaction,
-      gamePlayer: {
-        totalInvested: gamePlayer.totalInvested,
-        status: gamePlayer.status
-      }
-    });
+    notifyTransaction(gameId, { ...transaction, gamePlayer: { totalInvested: gamePlayer.totalInvested, status: gamePlayer.status, session: gamePlayer.session } });
 
-    res.status(201).json({ 
-      transaction, 
-      gamePlayer,
-      message: `${isFirstBuyIn ? 'Buy-in' : 'Re-buy'} recorded${sendNotification ? ' - player notified via WhatsApp' : ''}`
+    res.status(201).json({
+      transaction, gamePlayer, isRejoin,
+      message: `${isRejoin ? 'Rejoin' : isFirstBuyIn ? 'Buy-in' : 'Re-buy'} recorded`
     });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 });
 
-/**
- * POST /api/transactions/top-up
- * Host records a top-up for a player (same as re-buy, clearer naming)
- * Sends WhatsApp notification to player
- */
+// ─── TOP-UP ──────────────────────────────────────────────
 router.post('/top-up', [
   body('gameId').isUUID(),
   body('playerId').isUUID(),
   body('amount').isFloat({ min: 0.01 }),
-  body('paymentMethod').optional().isIn(['CASH', 'VENMO', 'PAYPAL', 'ZELLE', 'BANK_TRANSFER', 'OTHER']),
-  body('sendNotification').optional().isBoolean()
+  body('sendNotification').optional().isBoolean(),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { gameId, playerId, amount, paymentMethod = 'CASH', sendNotification = true } = req.body;
 
-    // Verify user is game host
-    const game = await prisma.game.findUnique({
-      where: { id: gameId }
-    });
-
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
-    if (game.hostId !== req.user.id) {
+    const game = await prisma.game.findUnique({ where: { id: gameId } });
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (game.hostId !== req.user.id && !['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Only host can record top-ups' });
     }
 
-    // Get player and game player record
-    const player = await prisma.user.findUnique({
-      where: { id: playerId },
-      select: { id: true, displayName: true, phone: true }
+    const player = await prisma.user.findUnique({ where: { id: playerId }, select: { id: true, displayName: true, phone: true, whatsappEnabled: true } });
+
+    const gamePlayer = await prisma.gamePlayer.update({
+      where: { gameId_playerId: { gameId, playerId } },
+      data: { totalInvested: { increment: parseFloat(amount) }, status: 'ACTIVE' }
     });
 
-    if (!player) {
-      return res.status(404).json({ error: 'Player not found' });
-    }
-
-    // Update player's total invested
-    const gamePlayer = await prisma.gamePlayer.updateMany({
-      where: {
-        gameId,
-        playerId,
-        status: { in: ['ACTIVE', 'INVITED'] }
-      },
-      data: {
-        totalInvested: { increment: parseFloat(amount) },
-        status: 'ACTIVE'
-      }
-    });
-
-    // Fetch updated record
-    const updatedGamePlayer = await prisma.gamePlayer.findFirst({
-      where: { gameId, playerId, status: 'ACTIVE' }
-    });
-
-    // Create transaction record
     const transaction = await prisma.transaction.create({
-      data: {
-        gameId,
-        playerId,
-        type: 'TOP_UP',
-        amount,
-        paymentMethod
-      }
+      data: { gameId, playerId, type: 'TOP_UP', amount, paymentMethod, session: gamePlayer.session }
     });
 
-    // Send WhatsApp notification
-    if (sendNotification && player.phone && updatedGamePlayer) {
-      notifyTopUp(player, game, amount, parseFloat(updatedGamePlayer.totalInvested)).catch(err => {
-        console.warn('WhatsApp notification failed:', err.message);
-      });
+    if (sendNotification && player?.phone && player?.whatsappEnabled) {
+      notifyTopUp(player, game, amount, parseFloat(gamePlayer.totalInvested)).catch(console.warn);
     }
 
-    // Broadcast update
-    notifyTransaction(gameId, { ...transaction, gamePlayer: updatedGamePlayer });
-
-    res.status(201).json({
-      transaction,
-      gamePlayer,
-      message: `Top-up recorded${sendNotification ? ' - player notified via WhatsApp' : ''}`
-    });
-  } catch (error) {
-    next(error);
-  }
+    notifyTransaction(gameId, { ...transaction, gamePlayer });
+    res.status(201).json({ transaction, gamePlayer });
+  } catch (err) { next(err); }
 });
 
-/**
- * POST /api/transactions/cash-out
- * Host records a player cash-out
- * Sends WhatsApp summary with profit/loss to player
- */
+// ─── CASH-OUT (individual, supports flexible/owed amounts) ─
 router.post('/cash-out', [
   body('gameId').isUUID(),
   body('playerId').isUUID(),
   body('amount').isFloat({ min: 0 }),
-  body('sendNotification').optional().isBoolean()
+  body('sendNotification').optional().isBoolean(),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { gameId, playerId, amount, sendNotification = true } = req.body;
 
-    // Verify user is game host
-    const game = await prisma.game.findUnique({
-      where: { id: gameId }
-    });
-
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
-    if (game.hostId !== req.user.id) {
+    const game = await prisma.game.findUnique({ where: { id: gameId } });
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (game.hostId !== req.user.id && !['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Only host can record cash-outs' });
     }
 
-    // Get current game player record
-    const existingGamePlayer = await prisma.gamePlayer.findFirst({
-      where: { 
-        gameId, 
-        playerId,
-        status: { in: ['ACTIVE', 'INVITED'] }
-      },
-      include: {
-        player: {
-          select: { id: true, displayName: true, phone: true }
-        }
-      },
-      orderBy: { joinedAt: 'desc' }
+    const existing = await prisma.gamePlayer.findUnique({
+      where: { gameId_playerId: { gameId, playerId } },
+      include: { player: { select: { id: true, displayName: true, phone: true, whatsappEnabled: true } } }
     });
+    if (!existing) return res.status(404).json({ error: 'Player not in game' });
 
-    if (!existingGamePlayer) {
-      return res.status(404).json({ error: 'Player not in this game' });
-    }
-
-    const totalInvested = parseFloat(existingGamePlayer.totalInvested);
+    const totalInvested = parseFloat(existing.totalInvested);
     const profit = amount - totalInvested;
 
-    // Update player status
+    // Allow any amount including 0 (player owes host) - flexible checkout
     const gamePlayer = await prisma.gamePlayer.update({
-      where: { id: existingGamePlayer.id },
-      data: {
-        cashOut: amount,
-        finalBalance: profit,
-        profitLoss: profit,
-        status: 'CASHED_OUT',
-        leftAt: new Date()
-      }
+      where: { gameId_playerId: { gameId, playerId } },
+      data: { cashOut: amount, finalBalance: profit, status: 'CASHED_OUT', leftAt: new Date() }
     });
 
-    // Create transaction
     const transaction = await prisma.transaction.create({
-      data: {
-        gameId,
-        playerId,
-        type: 'CASH_OUT',
-        amount
-      },
-      include: {
-        player: {
-          select: { id: true, displayName: true }
-        }
-      }
+      data: { gameId, playerId, type: 'CASH_OUT', amount, session: existing.session }
     });
 
-    // Send WhatsApp notification with profit/loss summary
-    if (sendNotification && existingGamePlayer.player?.phone) {
-      notifyCashOut(
-        existingGamePlayer.player, 
-        game, 
-        amount, 
-        totalInvested
-      ).catch(err => {
-        console.warn('WhatsApp notification failed:', err.message);
-      });
+    if (sendNotification && existing.player?.phone && existing.player?.whatsappEnabled) {
+      notifyCashOut(existing.player, game, amount, totalInvested).catch(console.warn);
     }
 
-    // Broadcast update
     notifyTransaction(gameId, { ...transaction, gamePlayer });
-
-    res.json({
-      transaction,
-      gamePlayer,
-      summary: {
-        totalInvested,
-        cashOut: amount,
-        profit
-      },
-      message: `Cash-out recorded${sendNotification ? ' - player notified via WhatsApp' : ''}`
-    });
-  } catch (error) {
-    next(error);
-  }
+    res.json({ transaction, gamePlayer, summary: { totalInvested, cashOut: amount, profit } });
+  } catch (err) { next(err); }
 });
 
-/**
- * POST /api/transactions/adjustment
- * Host makes a balance adjustment (correction)
- */
-router.post('/adjustment', [
+// ─── ADJUSTMENT ──────────────────────────────────────────
+router.post('/adjustment', requireMinRole('HOST'), [
   body('gameId').isUUID(),
   body('playerId').isUUID(),
   body('amount').isFloat(),
-  body('reason').trim().notEmpty()
+  body('reason').trim().notEmpty(),
 ], async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { gameId, playerId, amount, reason } = req.body;
-
-    const game = await prisma.game.findUnique({ where: { id: gameId } });
-
-    if (!game || game.hostId !== req.user.id) {
-      return res.status(403).json({ error: 'Only host can make adjustments' });
-    }
-
-    // Update player's total invested - get active session
-    const existingGamePlayer = await prisma.gamePlayer.findFirst({
-      where: { gameId, playerId, status: 'ACTIVE' },
-      orderBy: { joinedAt: 'desc' }
-    });
-
-    if (!existingGamePlayer) {
-      return res.status(404).json({ error: 'Player not active in this game' });
-    }
-
     const gamePlayer = await prisma.gamePlayer.update({
-      where: { id: existingGamePlayer.id },
-      data: {
-        totalInvested: { increment: parseFloat(amount) }
-      }
+      where: { gameId_playerId: { gameId, playerId } },
+      data: { totalInvested: { increment: parseFloat(amount) } }
     });
-
-    // Create adjustment transaction
     const transaction = await prisma.transaction.create({
-      data: {
-        gameId,
-        playerId,
-        type: 'ADJUSTMENT',
-        amount: Math.abs(amount),
-        notes: `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}: ${reason}`
-      }
+      data: { gameId, playerId, type: 'ADJUSTMENT', amount: Math.abs(amount), notes: `${amount >= 0 ? '+' : '-'}${Math.abs(amount)}: ${reason}`, session: gamePlayer.session }
     });
-
     notifyTransaction(gameId, transaction);
-
-    res.json({
-      transaction,
-      gamePlayer,
-      message: 'Adjustment recorded'
-    });
-  } catch (error) {
-    next(error);
-  }
+    res.json({ transaction, gamePlayer });
+  } catch (err) { next(err); }
 });
 
-/**
- * GET /api/transactions/game/:gameId
- * Get all transactions for a game
- */
+// ─── EDIT TRANSACTION (host can edit past results) ───────
+router.put('/:txId', requireMinRole('HOST'), async (req, res, next) => {
+  try {
+    const { amount, notes } = req.body;
+    const tx = await prisma.transaction.update({
+      where: { id: req.params.txId },
+      data: { ...(amount !== undefined && { amount }), ...(notes !== undefined && { notes }) }
+    });
+
+    // Recalculate gamePlayer totals
+    if (amount !== undefined) {
+      const allTx = await prisma.transaction.findMany({ where: { gameId: tx.gameId, playerId: tx.playerId } });
+      const totalInvested = allTx.filter(t => ['BUY_IN', 'RE_BUY', 'TOP_UP'].includes(t.type)).reduce((s, t) => s + parseFloat(t.amount), 0);
+      const lastCashOut = allTx.filter(t => t.type === 'CASH_OUT').sort((a, b) => b.createdAt - a.createdAt)[0];
+
+      await prisma.gamePlayer.update({
+        where: { gameId_playerId: { gameId: tx.gameId, playerId: tx.playerId } },
+        data: {
+          totalInvested,
+          ...(lastCashOut ? { cashOut: parseFloat(lastCashOut.amount), finalBalance: parseFloat(lastCashOut.amount) - totalInvested } : {})
+        }
+      });
+    }
+
+    res.json({ transaction: tx });
+  } catch (err) { next(err); }
+});
+
+// ─── GET GAME TRANSACTIONS ───────────────────────────────
 router.get('/game/:gameId', async (req, res, next) => {
   try {
-    const { gameId } = req.params;
-    const { type, playerId, limit = 100 } = req.query;
-
-    const where = { gameId };
+    const { type, playerId } = req.query;
+    const where = { gameId: req.params.gameId };
     if (type) where.type = type;
     if (playerId) where.playerId = playerId;
 
     const transactions = await prisma.transaction.findMany({
       where,
-      include: {
-        player: {
-          select: { id: true, displayName: true, avatarUrl: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: parseInt(limit)
+      include: { player: { select: { id: true, displayName: true } } },
+      orderBy: { createdAt: 'desc' }
     });
-
     res.json({ transactions });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 });
 
-/**
- * GET /api/transactions/player/:playerId
- * Get transaction history for a player
- */
+// ─── GET PLAYER TRANSACTIONS ─────────────────────────────
 router.get('/player/:playerId', async (req, res, next) => {
   try {
-    const { playerId } = req.params;
-    const { limit = 50 } = req.query;
-
     const transactions = await prisma.transaction.findMany({
-      where: { playerId },
-      include: {
-        game: {
-          select: { id: true, name: true, gameType: true }
-        }
-      },
+      where: { playerId: req.params.playerId },
+      include: { game: { select: { id: true, name: true, gameType: true } } },
       orderBy: { createdAt: 'desc' },
-      take: parseInt(limit)
+      take: 100,
     });
-
     res.json({ transactions });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/transactions/bulk-cashout
- * Cash out entire table with expenses
- */
-router.post('/bulk-cashout', [
-  body('gameId').isUUID(),
-  body('cashouts').isArray({ min: 1 }),
-  body('cashouts.*.playerId').isUUID(),
-  body('cashouts.*.amount').isFloat({ min: 0 }),
-  body('foodExpense').optional().isFloat({ min: 0 }),
-  body('rentExpense').optional().isFloat({ min: 0 }),
-  body('dealerExpense').optional().isFloat({ min: 0 }),
-  body('miscExpense').optional().isFloat({ min: 0 }),
-  body('sendNotifications').optional().isBoolean()
-], async (req, res, next) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { 
-      gameId, 
-      cashouts, 
-      foodExpense = 0, 
-      rentExpense = 0, 
-      dealerExpense = 0, 
-      miscExpense = 0,
-      sendNotifications = true 
-    } = req.body;
-
-    // Verify user is game host
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      include: {
-        players: {
-          include: {
-            player: {
-              select: { id: true, displayName: true, phone: true }
-            }
-          }
-        }
-      }
-    });
-
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
-    if (game.hostId !== req.user.id) {
-      return res.status(403).json({ error: 'Only host can perform bulk cash-out' });
-    }
-
-    // Update game expenses
-    await prisma.game.update({
-      where: { id: gameId },
-      data: {
-        foodExpense: parseFloat(foodExpense),
-        rentExpense: parseFloat(rentExpense),
-        dealerExpense: parseFloat(dealerExpense),
-        miscExpense: parseFloat(miscExpense),
-        status: 'COMPLETED',
-        endTime: new Date()
-      }
-    });
-
-    const results = [];
-    const cashoutErrors = [];
-
-    // Process each cashout
-    for (const cashout of cashouts) {
-      try {
-        const { playerId, amount } = cashout;
-
-        // Find active game player record
-        const existingGamePlayer = await prisma.gamePlayer.findFirst({
-          where: { 
-            gameId, 
-            playerId,
-            status: { in: ['ACTIVE', 'INVITED'] }
-          },
-          include: {
-            player: {
-              select: { id: true, displayName: true, phone: true }
-            }
-          },
-          orderBy: { joinedAt: 'desc' }
-        });
-
-        if (!existingGamePlayer) {
-          cashoutErrors.push({ playerId, error: 'Player not found in game' });
-          continue;
-        }
-
-        const totalInvested = parseFloat(existingGamePlayer.totalInvested);
-        const profit = amount - totalInvested;
-
-        // Update player status
-        const gamePlayer = await prisma.gamePlayer.update({
-          where: { id: existingGamePlayer.id },
-          data: {
-            cashOut: amount,
-            finalBalance: profit,
-            profitLoss: profit,
-            status: 'CASHED_OUT',
-            leftAt: new Date()
-          }
-        });
-
-        // Create transaction
-        const transaction = await prisma.transaction.create({
-          data: {
-            gameId,
-            playerId,
-            type: 'CASH_OUT',
-            amount
-          }
-        });
-
-        // Send WhatsApp notification
-        if (sendNotifications && existingGamePlayer.player?.phone) {
-          notifyCashOut(
-            existingGamePlayer.player, 
-            game, 
-            amount, 
-            totalInvested
-          ).catch(err => {
-            console.warn(`WhatsApp notification failed for ${playerId}:`, err.message);
-          });
-        }
-
-        results.push({
-          playerId,
-          playerName: existingGamePlayer.player.displayName,
-          amount,
-          profit,
-          success: true
-        });
-      } catch (err) {
-        console.error(`Error processing cashout for player ${cashout.playerId}:`, err);
-        cashoutErrors.push({ 
-          playerId: cashout.playerId, 
-          error: err.message 
-        });
-      }
-    }
-
-    // Broadcast game completion
-    broadcastGameUpdate(gameId, { status: 'COMPLETED', endTime: new Date() });
-
-    res.json({
-      success: true,
-      message: 'Bulk cash-out completed',
-      results,
-      errors: cashoutErrors,
-      expenses: {
-        food: foodExpense,
-        rent: rentExpense,
-        dealer: dealerExpense,
-        misc: miscExpense,
-        total: parseFloat(foodExpense) + parseFloat(rentExpense) + parseFloat(dealerExpense) + parseFloat(miscExpense)
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

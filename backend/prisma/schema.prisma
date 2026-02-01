@@ -1,6 +1,3 @@
-// Prisma schema for PokerLedger Pro
-// Database: PostgreSQL
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,36 +7,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model - supports Super Admin, Admin, Host, and Player roles
+// ─── USER ───────────────────────────────────────────────
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
+  id              String         @id @default(uuid())
+  email           String         @unique
   passwordHash    String?
+  pin             String?        // hashed 4-6 digit PIN for quick unlock
   phone           String?
   displayName     String
   avatarUrl       String?
-  role            UserRole  @default(PLAYER)
-  subscriptionTier SubscriptionTier @default(FREE)
-  subscriptionExpiresAt DateTime?
-  paymentMethods  String[]  @default([])
+  role            UserRole       @default(PLAYER)
+  subscription    Subscription   @default(FREE)
+  whatsappEnabled Boolean        @default(true)
+  rememberToken   String?        // long-lived token for auto-login
   preferences     Json?
-  isVerified      Boolean   @default(false)
-  notificationsEnabled Boolean @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  isVerified      Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  // Relations
-  hostedGames     Game[]         @relation("GameHost")
-  managedHosts    User[]         @relation("AdminManagesHosts")
-  admin           User?          @relation("AdminManagesHosts", fields: [adminId], references: [id])
-  adminId         String?
+  hostedGames        Game[]          @relation("GameHost")
   gameParticipations GamePlayer[]
-  transactions    Transaction[]
-  notifications   Notification[]
-  sentTopUpRequests TopUpRequest[] @relation("RequestedBy")
-  messages        Message[]      @relation("MessageRecipient")
-  sentMessages    Message[]      @relation("MessageSender")
-  
+  transactions       Transaction[]
+  notifications      Notification[]
+  inboxMessages      InboxMessage[]
+  rollingBalances    RollingBalance[] @relation("PlayerBalance")
+  hostBalances       RollingBalance[] @relation("HostBalance")
+  managedHosts       User[]          @relation("AdminHosts")
+  managedBy          User?           @relation("AdminHosts", fields: [managedById], references: [id])
+  managedById        String?
+
   @@map("users")
 }
 
@@ -50,44 +46,37 @@ enum UserRole {
   PLAYER
 }
 
-enum SubscriptionTier {
+enum Subscription {
   FREE
   PREMIUM
 }
 
-// Game session model
+// ─── GAME ───────────────────────────────────────────────
 model Game {
   id              String      @id @default(uuid())
+  hostId          String
   name            String
   gameType        GameType    @default(TEXAS_HOLDEM)
   status          GameStatus  @default(SCHEDULED)
   location        String?
   startTime       DateTime
   endTime         DateTime?
-  buyInAmount     Decimal     @db.Decimal(10, 2)
-  blindsSmall     Decimal?    @db.Decimal(10, 2)
-  blindsBig       Decimal?    @db.Decimal(10, 2)
-  anteAmount      Decimal?    @db.Decimal(10, 2)
-  rakePercentage  Decimal     @default(0) @db.Decimal(5, 2)
+  buyInAmount     Decimal     @db.Decimal(10,2)
+  blindsSmall     Decimal?    @db.Decimal(10,2)
+  blindsBig       Decimal?    @db.Decimal(10,2)
+  anteAmount      Decimal?    @db.Decimal(10,2)
+  rakePercentage  Decimal     @default(0) @db.Decimal(5,2)
   rebuyPolicy     RebuyPolicy @default(UNLIMITED)
   maxRebuys       Int?
   notes           String?
-  // Float & Expense tracking
-  floatAmount     Decimal     @default(0) @db.Decimal(10, 2)
-  foodExpense     Decimal     @default(0) @db.Decimal(10, 2)
-  rentExpense     Decimal     @default(0) @db.Decimal(10, 2)
-  dealerExpense   Decimal     @default(0) @db.Decimal(10, 2)
-  miscExpense     Decimal     @default(0) @db.Decimal(10, 2)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  // Relations
-  hostId          String
   host            User           @relation("GameHost", fields: [hostId], references: [id])
   players         GamePlayer[]
   transactions    Transaction[]
-  topUpRequests   TopUpRequest[]
-  messages        Message[]
+  floats          Float[]
+  expenses        Expense[]
 
   @@map("games")
 }
@@ -115,28 +104,25 @@ enum RebuyPolicy {
   NONE
 }
 
-// Junction table for game participants
-// Allows players to rejoin after cashing out
+// ─── GAME PLAYER (supports rejoin after cashout) ────────
 model GamePlayer {
   id              String        @id @default(uuid())
   gameId          String
   playerId        String
-  initialBuyIn    Decimal       @db.Decimal(10, 2)
-  totalInvested   Decimal       @default(0) @db.Decimal(10, 2)
-  cashOut         Decimal?      @db.Decimal(10, 2)
-  finalBalance    Decimal?      @db.Decimal(10, 2)
-  profitLoss      Decimal?      @db.Decimal(10, 2)
+  initialBuyIn    Decimal       @db.Decimal(10,2)
+  totalInvested   Decimal       @default(0) @db.Decimal(10,2)
+  cashOut         Decimal?      @db.Decimal(10,2)
+  finalBalance    Decimal?      @db.Decimal(10,2)
   status          PlayerStatus  @default(ACTIVE)
   seatNumber      Int?
+  session         Int           @default(1)  // increments on rejoin
   joinedAt        DateTime      @default(now())
   leftAt          DateTime?
-  sessionNumber   Int           @default(1) // Track rejoin sessions
 
-  // Relations
   game            Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
   player          User          @relation(fields: [playerId], references: [id])
 
-  @@index([gameId, playerId])
+  @@unique([gameId, playerId])
   @@map("game_players")
 }
 
@@ -149,21 +135,21 @@ enum PlayerStatus {
   CASHED_OUT
 }
 
-// Financial transactions
+// ─── TRANSACTION ────────────────────────────────────────
 model Transaction {
-  id              String            @id @default(uuid())
+  id              String           @id @default(uuid())
   gameId          String
   playerId        String
   type            TransactionType
-  amount          Decimal           @db.Decimal(10, 2)
-  paymentMethod   PaymentMethod     @default(CASH)
-  paymentStatus   PaymentStatus     @default(COMPLETED)
+  amount          Decimal          @db.Decimal(10,2)
+  paymentMethod   PaymentMethod    @default(CASH)
+  paymentStatus   PaymentStatus    @default(COMPLETED)
+  session         Int              @default(1) // links to player session
   notes           String?
-  createdAt       DateTime          @default(now())
+  createdAt       DateTime         @default(now())
 
-  // Relations
-  game            Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  player          User              @relation(fields: [playerId], references: [id])
+  game            Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player          User             @relation(fields: [playerId], references: [id])
 
   @@map("transactions")
 }
@@ -192,65 +178,89 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// Top-up requests with approval workflow
-model TopUpRequest {
-  id              String            @id @default(uuid())
-  gameId          String
-  playerId        String
-  amount          Decimal           @db.Decimal(10, 2)
-  status          TopUpStatus       @default(PENDING)
-  notificationSent Boolean          @default(false)
-  whatsappMessageId String?
-  approvedAt      DateTime?
-  rejectedAt      DateTime?
-  rejectionReason String?
-  createdAt       DateTime          @default(now())
+// ─── FLOAT (host buffer/escrow chips with dealer) ───────
+model Float {
+  id        String   @id @default(uuid())
+  gameId    String
+  amount    Decimal  @db.Decimal(10,2)
+  notes     String?
+  createdAt DateTime @default(now())
 
-  // Relations
-  game            Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  player          User              @relation("RequestedBy", fields: [playerId], references: [id])
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  @@map("top_up_requests")
+  @@map("floats")
 }
 
-enum TopUpStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
+// ─── EXPENSES (food, rent, dealer, misc) ────────────────
+model Expense {
+  id        String      @id @default(uuid())
+  gameId    String
+  category  ExpenseType
+  amount    Decimal     @db.Decimal(10,2)
+  notes     String?
+  createdAt DateTime    @default(now())
+
+  game      Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("expenses")
 }
 
-// Notification log
+enum ExpenseType {
+  FOOD
+  RENT
+  DEALER
+  MISC
+}
+
+// ─── ROLLING BALANCE (cross-game tally per player-host) ─
+model RollingBalance {
+  id          String   @id @default(uuid())
+  playerId    String
+  hostId      String
+  totalBuyIn  Decimal  @default(0) @db.Decimal(10,2)
+  totalCashOut Decimal @default(0) @db.Decimal(10,2)
+  balance     Decimal  @default(0) @db.Decimal(10,2)  // negative = owes host
+  lastGameId  String?
+  updatedAt   DateTime @updatedAt
+
+  player      User     @relation("PlayerBalance", fields: [playerId], references: [id])
+  host        User     @relation("HostBalance", fields: [hostId], references: [id])
+
+  @@unique([playerId, hostId])
+  @@map("rolling_balances")
+}
+
+// ─── NOTIFICATION ───────────────────────────────────────
 model Notification {
-  id              String              @id @default(uuid())
-  userId          String
-  type            NotificationType
-  title           String
-  message         String
-  channel         NotificationChannel
-  status          NotificationStatus  @default(PENDING)
-  externalId      String?             // WhatsApp/SMS message ID
-  metadata        Json?
-  sentAt          DateTime?
-  readAt          DateTime?
-  createdAt       DateTime            @default(now())
+  id          String              @id @default(uuid())
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  channel     NotificationChannel
+  status      NotificationStatus  @default(PENDING)
+  externalId  String?
+  metadata    Json?
+  sentAt      DateTime?
+  readAt      DateTime?
+  createdAt   DateTime            @default(now())
 
-  // Relations
-  user            User                @relation(fields: [userId], references: [id])
+  user        User                @relation(fields: [userId], references: [id])
 
   @@map("notifications")
 }
 
 enum NotificationType {
   GAME_INVITATION
-  TOP_UP_REQUEST
-  TOP_UP_APPROVED
-  TOP_UP_REJECTED
+  BUY_IN
+  RE_BUY
+  TOP_UP
+  CASH_OUT
   GAME_STARTING
   GAME_ENDED
   BALANCE_REMINDER
   GAME_SUMMARY
-  REMINDER
+  SETTLEMENT_REMINDER
 }
 
 enum NotificationChannel {
@@ -268,32 +278,17 @@ enum NotificationStatus {
   FAILED
 }
 
-// In-app messaging system for PREMIUM users
-model Message {
-  id              String    @id @default(uuid())
-  senderId        String
-  recipientId     String
-  gameId          String?   // Optional - if message is game-related
-  subject         String?
-  body            String
-  isRead          Boolean   @default(false)
-  priority        MessagePriority @default(NORMAL)
-  createdAt       DateTime  @default(now())
-  readAt          DateTime?
+// ─── INBOX MESSAGE (for premium in-app messaging) ──────
+model InboxMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  gameId    String?
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
 
-  // Relations
-  sender          User      @relation("MessageSender", fields: [senderId], references: [id])
-  recipient       User      @relation("MessageRecipient", fields: [recipientId], references: [id])
-  game            Game?     @relation(fields: [gameId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
-  @@index([recipientId, isRead])
-  @@index([gameId])
-  @@map("messages")
-}
-
-enum MessagePriority {
-  LOW
-  NORMAL
-  HIGH
-  URGENT
+  @@map("inbox_messages")
 }

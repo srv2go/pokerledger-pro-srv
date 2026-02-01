@@ -1,354 +1,145 @@
-# PokerLedger Pro 🃏
+# PokerLedger Pro v3.0
 
-A mobile-first application for hosts of private Texas Hold'em and Omaha poker games to streamline financial tracking, player management, and communication during home games.
+Mobile-first web app for managing private poker games — designed for high-trust, close-knit groups.
 
-![PokerLedger Pro](https://img.shields.io/badge/version-1.0.0-green)
-![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
-![PostgreSQL](https://img.shields.io/badge/postgresql-%3E%3D14-blue)
-![Android](https://img.shields.io/badge/platform-android-green)
+## What's New in v3
 
-## 🚀 Quick Start
+### Role-Based Access
+| Role | Permissions | Limit |
+|------|-------------|-------|
+| **Super Admin** | Full system access, promote admins | Max 3 |
+| **Admin** | Manage hosts, view all data, host games | Unlimited |
+| **Host** | Create tables, manage players, record transactions | Unlimited |
+| **Player** | View own game history & stats only | Read-only |
 
-**Want to deploy and get your Android app running?**
+### Session Persistence
+- **Remember Me** — auto-login on app reopen (90-day token)
+- **PIN unlock** — optional 4-6 digit quick unlock
+- **Android back button** — navigates to previous screen, doesn't close app
 
-👉 **[See QUICKSTART.md](QUICKSTART.md)** for 5-minute setup with free hosting!
+### Points System (Currency-Free)
+All amounts display as **points** (e.g., "300 pts" not "$300") — works for any geo-location.
 
-Already have an APK ready at `~/Downloads/PokerLedgerPro.apk`
+### Subscription Model (Future)
+- **Free**: View last 3 games only
+- **Premium**: Full history, extended inbox
 
-## Features
+### Game Features
+- **Player Rejoin** — cashed-out players can rejoin same game (session tracking, no duplicates)
+- **Individual Cash-out** — settle one player while game continues
+- **Table Cash-out** — settle all remaining players at once, with expense fields
+- **Close Table** — end game with full tally
+- **Float** — host buffer/escrow chips with dealer, tracked in rake formula
+- **Expenses** — food, rent, dealer, misc — deducted in tally
+- **Rake Formula**: `(Float + Player Buy-ins) - Cash-outs - Expenses = Rake`
+- **Flexible Cash-out** — player can cash out any amount (including 0 if they owe host)
+- **Excel Export** — download complete game data after closing
 
-### Core Features
-- **Game Management**: Create, start, pause, and end poker games
-- **Player Tracking**: Manage players, buy-ins, re-buys, and cash-outs
-- **Real-time Updates**: WebSocket-powered live dashboard
-- **WhatsApp Notifications**: Instant notifications for top-up requests
-- **Financial Tracking**: Automatic profit/loss calculations
+### Rolling Balance & Settlement
+- Cross-game running balance per player-host pair
+- Send settlement reminders via WhatsApp or in-app
+- Host can send balance summaries outside games
 
-### Host Capabilities
-- Create games with custom buy-ins, blinds, and rake
-- Invite players via email/phone
-- Approve/reject top-up requests via WhatsApp
-- Track house collections and game statistics
-- View player performance history
+### WhatsApp Integration (Simplified)
+Plain notifications — no game details exposed:
+- Buy-in: `"100 points credited at 8:30 PM"`
+- Cash-out: `"Debited 300 points, balance 450 points. Net: +150 points"`
+- Toggle WhatsApp on/off per player for privacy
 
-### Player Features
-- Join games via invitation
-- Request top-ups during games
-- View personal statistics and history
-- Track profit/loss across sessions
+### In-App Inbox
+- Premium users see last 6+ games of messages
+- Settlement reminders, balance updates, game summaries
 
-## Tech Stack
-
-### Mobile App
-- **React Native (Capacitor)** - Native Android app
-- **React 18** with Vite
-- **Tailwind CSS** with custom poker theme
-- **Native device features** support
-
-### Backend
-- **Node.js** with Express.js
-- **PostgreSQL** with Prisma ORM
-- **WebSocket** for real-time updates
-- **JWT** authentication
-- **WhatsApp Cloud API** for notifications
-
-### Frontend
-- **React 18** with Vite
-- **Tailwind CSS** with custom poker theme
-- **React Router** for navigation
-- **Lucide Icons** for UI elements
+### Rake Privacy
+- Only Super Admin, Admin, and Host see rake percentage
+- Players never see rake data
 
 ## Quick Start
 
-### Prerequisites
-- Node.js 18+ 
-- PostgreSQL 14+
-- WhatsApp Business Account (for notifications)
-
-### 1. Clone and Install
-
 ```bash
-# Navigate to project
-cd pokerledger-pro
-
-# Install backend dependencies
+# 1. Backend
 cd backend
+cp .env.example .env  # Edit with your DB credentials
 npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
-```
-
-### 2. Database Setup
-
-```bash
-# Create PostgreSQL database
-createdb pokerledger
-
-# Copy environment file
-cd backend
-cp .env.example .env
-
-# Update DATABASE_URL in .env with your PostgreSQL credentials
-# Example: postgresql://username:password@localhost:5432/pokerledger
-
-# Run database migrations
-npm run db:migrate
-
-# Generate Prisma client
-npm run db:generate
-```
-
-### 3. Configure Environment
-
-Edit `backend/.env`:
-
-```env
-# Server
-PORT=3001
-NODE_ENV=development
-
-# Database
-DATABASE_URL="postgresql://username:password@localhost:5432/pokerledger"
-
-# JWT
-JWT_SECRET=your-secret-key-change-in-production
-JWT_EXPIRES_IN=7d
-
-# WhatsApp Cloud API (optional - for notifications)
-WHATSAPP_API_URL=https://graph.facebook.com/v18.0
-WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id
-WHATSAPP_ACCESS_TOKEN=your-access-token
-WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-webhook-token
-
-# Frontend URL
-FRONTEND_URL=http://localhost:3000
-```
-
-### 4. Start Development Servers
-
-```bash
-# Terminal 1: Start backend
-cd backend
+npx prisma migrate dev --name init
 npm run dev
 
-# Terminal 2: Start frontend  
+# 2. Frontend (separate terminal)
 cd frontend
+npm install
 npm run dev
 ```
 
-Open http://localhost:3000 in your browser.
+Backend: http://localhost:3001
+Frontend: http://localhost:3000
 
-## WhatsApp Integration Setup
+## API Reference
 
-### 1. Create Meta Business Account
-1. Go to [Meta Business Suite](https://business.facebook.com/)
-2. Create a Business account
-3. Navigate to WhatsApp Business API
-
-### 2. Configure WhatsApp Business API
-1. Get your Phone Number ID
-2. Generate a permanent access token
-3. Add these to your `.env` file
-
-### 3. Set Up Webhook
-1. Configure your webhook URL: `https://yourdomain.com/webhooks/whatsapp`
-2. Set the verify token (same as `WHATSAPP_WEBHOOK_VERIFY_TOKEN`)
-3. Subscribe to `messages` webhook events
-
-### How WhatsApp Notifications Work
-This is a high-trust system designed for close-knit poker groups. The host has full authority to record all transactions, and players receive courtesy notifications:
-
-1. **Host records buy-in** → Player receives WhatsApp confirmation
-2. **Host adds top-up** → Player receives notification with new total
-3. **Host records cash-out** → Player receives summary with profit/loss
-
-No approval queues - the host's word is final, just like a real home game!
-
-## API Documentation
-
-### Authentication
+### Auth
 ```
-POST /api/auth/register - Register new user
-POST /api/auth/login    - Login user
-GET  /api/auth/me       - Get current user profile
+POST /api/auth/register        - Register (choose HOST or PLAYER role)
+POST /api/auth/login           - Login with Remember Me
+POST /api/auth/auto-login      - Auto-login with remember token
+POST /api/auth/verify-pin      - Quick unlock with PIN
+POST /api/auth/set-pin         - Set/change PIN
+GET  /api/auth/me              - Get profile
+PUT  /api/auth/profile         - Update profile
+POST /api/auth/promote         - Promote user role (admin+)
 ```
 
 ### Games
 ```
-GET    /api/games           - List all games
-POST   /api/games           - Create new game
-GET    /api/games/:id       - Get game details
-PUT    /api/games/:id       - Update game
-DELETE /api/games/:id       - Delete game
-POST   /api/games/:id/start - Start game
-POST   /api/games/:id/pause - Pause game
-POST   /api/games/:id/end   - End game
+GET    /api/games              - List games (role-filtered)
+GET    /api/games/:id          - Game detail with stats & tally
+POST   /api/games              - Create game (host+)
+POST   /api/games/:id/start    - Start game
+POST   /api/games/:id/pause    - Pause
+POST   /api/games/:id/resume   - Resume
+POST   /api/games/:id/end      - End game (updates rolling balances)
+POST   /api/games/:id/float    - Add float
+POST   /api/games/:id/expense  - Add expense
+POST   /api/games/:id/table-cashout - Cash out all + expenses
+POST   /api/games/:id/invite   - Invite players (WhatsApp)
 ```
 
 ### Transactions
 ```
-POST /api/transactions/buy-in          - Record buy-in (host only, notifies player)
-POST /api/transactions/top-up          - Add chips to player (host only, notifies player)
-POST /api/transactions/cash-out        - Record cash-out (host only, sends summary)
-POST /api/transactions/adjustment      - Balance correction (host only)
-GET  /api/transactions/game/:gameId    - Get game transactions
-GET  /api/transactions/player/:playerId - Get player history
+POST /api/transactions/buy-in       - Buy-in / rejoin (host)
+POST /api/transactions/top-up       - Add points (host)
+POST /api/transactions/cash-out     - Individual cash-out (host)
+POST /api/transactions/adjustment   - Balance correction (host)
+PUT  /api/transactions/:txId        - Edit past transaction
+GET  /api/transactions/game/:id     - Game transactions
+GET  /api/transactions/player/:id   - Player transaction history
 ```
 
-### Players
+### Stats & Export
 ```
-GET  /api/players          - List all players
-POST /api/players          - Create player
-GET  /api/players/:id      - Get player details
-GET  /api/players/:id/history - Get player game history
-```
-
-## Project Structure
-
-```
-pokerledger-pro/
-├── backend/
-│   ├── prisma/
-│   │   └── schema.prisma     # Database schema
-│   ├── src/
-│   │   ├── index.js          # Express server entry
-│   │   ├── middleware/
-│   │   │   └── auth.js       # JWT authentication
-│   │   ├── routes/
-│   │   │   ├── auth.js       # Auth endpoints
-│   │   │   ├── games.js      # Game management
-│   │   │   ├── players.js    # Player management
-│   │   │   ├── transactions.js # Financial tracking
-│   │   │   ├── notifications.js # Notification management
-│   │   │   └── webhooks.js   # WhatsApp webhooks
-│   │   └── services/
-│   │       ├── websocket.js  # Real-time updates
-│   │       └── whatsapp.js   # WhatsApp Cloud API
-│   ├── .env.example
-│   └── package.json
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   └── ui.jsx        # Reusable UI components
-│   │   ├── context/
-│   │   │   └── AuthContext.jsx # Authentication state
-│   │   ├── hooks/
-│   │   │   └── index.js      # Custom React hooks
-│   │   ├── pages/
-│   │   │   ├── Login.jsx
-│   │   │   ├── Register.jsx
-│   │   │   ├── Dashboard.jsx
-│   │   │   ├── CreateGame.jsx
-│   │   │   └── GameDetail.jsx
-│   │   ├── services/
-│   │   │   ├── api.js        # API client
-│   │   │   └── websocket.js  # WebSocket client
-│   │   ├── styles/
-│   │   │   └── index.css     # Tailwind + custom styles
-│   │   ├── App.jsx           # Routes configuration
-│   │   └── main.jsx          # Entry point
-│   ├── index.html
-│   ├── tailwind.config.js
-│   ├── vite.config.js
-│   └── package.json
-│
-└── README.md
+GET  /api/stats/host-dashboard     - Host grid view (all players, rolling balances)
+GET  /api/stats/my-stats           - Player personal stats
+GET  /api/stats/game-history       - Completed games
+GET  /api/export/game/:id          - Download game Excel
 ```
 
-## Key Workflows
-
-### Creating a Game
-1. Host clicks "New Game" on Dashboard
-2. Fills in game details (name, type, buy-in, blinds)
-3. Invites players from their contact list
-4. Players receive WhatsApp invitations
-5. Game is created in SCHEDULED status
-
-### During Active Game
-1. Host starts game → Status changes to ACTIVE
-2. Host adds players and records buy-ins → Players get WhatsApp confirmations
-3. Player needs more chips → Host adds top-up directly
-4. Player gets WhatsApp notification of new balance
-5. All balances update in real-time for the host
-
-### Ending a Game
-1. Host records cash-outs for remaining players
-2. Host clicks "End Game"
-3. Final balances calculated
-4. Profit/loss displayed for each player
-5. Game moves to COMPLETED status
-
-## Deployment
-
-### Mobile App (Android)
-
-The app is ready to share! APK location: `~/Downloads/PokerLedgerPro.apk`
-
-**Rebuild after changes:**
-```bash
-./build-apk.sh
+### Players & Settlement
+```
+GET  /api/players                  - List players
+POST /api/players                  - Create player (host)
+GET  /api/players/balances/rolling - Rolling balances
+POST /api/players/reminder/:id     - Send settlement reminder
+POST /api/players/send-summary/:id - Send balance summary
 ```
 
-**Update with your backend URL:**
-```bash
-./update-backend-url.sh https://your-backend-url.onrender.com
+### Notifications
+```
+GET  /api/notifications/inbox      - In-app inbox
+PUT  /api/notifications/inbox/:id/read - Mark read
+PUT  /api/notifications/whatsapp-toggle - Enable/disable WhatsApp
 ```
 
-See [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md) for details.
-
-### Backend - Free Hosting Options
-
-**Option 1: Render (Recommended)**
-- See [QUICKSTART.md](QUICKSTART.md) for 5-minute setup
-- Or [DEPLOY_TO_RENDER.md](DEPLOY_TO_RENDER.md) for detailed guide
-
-**Option 2: Other Free Platforms**
-- Railway.app (free tier)
-- Fly.io (free tier)
-- Cyclic.sh (free tier)
-
-### Production Build
-```bash
-# Build frontend
-cd frontend
-npm run build
-
-# Start production server
-cd ../backend
-NODE_ENV=production npm start
-```
-
-### Environment Variables (Production)
-- Use strong JWT_SECRET
-- Configure proper CORS origins
-- Set up SSL/TLS
-- Use production PostgreSQL instance
-- Configure WhatsApp Business API with verified number
-
-## Security Features
-- JWT-based authentication
-- Password hashing with bcrypt
-- Rate limiting on API endpoints
-- CORS configuration
-- Helmet.js security headers
-- SQL injection prevention via Prisma
-
-## Contributing
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-MIT License - see LICENSE file for details.
-
-## Support
-For support, email support@pokerledger.pro or create an issue in this repository.
-
----
-
-Built with ♠️ ♥️ ♣️ ♦️ by the PokerLedger Team
+## Tech Stack
+- **Frontend**: React 18, Vite, Tailwind CSS, React Router
+- **Backend**: Node.js, Express, Prisma ORM, PostgreSQL
+- **Real-time**: WebSocket
+- **Notifications**: WhatsApp Cloud API
+- **Export**: ExcelJS

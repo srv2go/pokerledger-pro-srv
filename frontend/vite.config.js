@@ -6,14 +6,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
-      },
-      '/ws': {
-        target: 'ws://localhost:3001',
-        ws: true
-      }
+      '/api': 'http://localhost:3001',
+      '/ws': { target: 'ws://localhost:3001', ws: true },
+      '/webhooks': 'http://localhost:3001'
     }
   }
 });

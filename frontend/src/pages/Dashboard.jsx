@@ -1,295 +1,138 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useGames, formatCurrency, formatRelativeTime } from '../hooks';
-import { 
-  Card, Button, Badge, Avatar, StatCard, 
-  EmptyState, LoadingScreen 
-} from '../components/ui';
-import { 
-  Plus, Play, Users, DollarSign, Clock, 
-  Calendar, TrendingUp, MoreVertical, Spade,
-  ChevronRight, Bell
-} from 'lucide-react';
+import { useGames, fmtPts, fmtTime } from '../hooks';
+import { Card, Badge, Avatar, StatCard, LoadingScreen, EmptyState } from '../components/ui';
+import { Plus, Users, BarChart3, Clock, Home, Inbox, Settings, ChevronRight } from 'lucide-react';
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
-  const { games, loading, error, refresh } = useGames();
+  const { user, isHost } = useAuth();
+  const { games, loading, refresh } = useGames();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Free tier enforcement: Show only last 3 games for FREE users
-  const isFreeUser = user?.subscriptionTier === 'FREE' || !user?.subscriptionTier;
-  const displayGames = isFreeUser ? games.slice(-3) : games;
+  const active = games.filter(g => ['ACTIVE', 'PAUSED'].includes(g.status));
+  const scheduled = games.filter(g => g.status === 'SCHEDULED');
+  const recent = games.filter(g => ['COMPLETED', 'ARCHIVED'].includes(g.status)).slice(0, 5);
 
-  const activeGames = displayGames.filter(g => g.status === 'ACTIVE');
-  const scheduledGames = displayGames.filter(g => g.status === 'SCHEDULED');
-  const recentGames = displayGames.filter(g => g.status === 'COMPLETED').slice(0, 3);
-
-  // Calculate stats
-  const totalPot = activeGames.reduce((sum, g) => sum + parseFloat(g._sum?.totalInvested || 0), 0);
-  const totalPlayers = activeGames.reduce((sum, g) => sum + (g._count?.players || 0), 0);
-
-  if (loading) {
-    return <LoadingScreen message="Loading your games..." />;
-  }
+  if (loading) return <LoadingScreen />;
 
   return (
-    <div className="min-h-screen pb-24 bg-gray-950">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-md border-b border-gray-800">
-        <div className="px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-felt-500 to-felt-700 flex items-center justify-center">
-              <Spade className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-white">PokerLedger</h1>
-              <p className="text-xs text-gray-400">Welcome, {user?.displayName}</p>
-            </div>
+    <div className="min-h-screen bg-gray-950 pb-24">
+      {/* Header with safe area */}
+      <header className="sticky-header px-4 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">PokerLedger Pro</h1>
+            <p className="text-xs text-gray-400">{user?.displayName} • <span className="capitalize">{user?.role?.toLowerCase().replace('_', ' ')}</span></p>
           </div>
-          <div className="flex items-center gap-2">
-             {user?.role === 'HOST' && (
-               <button 
-                 onClick={() => navigate('/host-dashboard')}
-                 className="px-3 py-2 rounded-lg bg-felt-500 hover:bg-felt-600 text-white text-xs font-bold"
-               >
-                 Host Dashboard
-               </button>
-             )}
-            <button className="p-2 rounded-lg hover:bg-gray-800 relative">
-              <Bell className="w-5 h-5 text-gray-400" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-felt-500 rounded-full" />
+          {isHost && (
+            <button onClick={() => navigate('/create-game')} className="w-10 h-10 bg-felt-600 rounded-xl flex items-center justify-center">
+              <Plus className="w-5 h-5 text-white" />
             </button>
-            <button 
-              onClick={() => navigate('/profile')}
-              className="p-1"
-            >
-              <Avatar name={user?.displayName} size="sm" />
-            </button>
-          </div>
+          )}
         </div>
       </header>
 
-      <main className="px-4 py-6 space-y-6">
-        {/* Free Tier Notice */}
-        {isFreeUser && games.length > 3 && (
-          <Card className="p-4 bg-yellow-500/10 border-yellow-500/20">
-            <div className="flex items-start gap-3">
-              <TrendingUp className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="font-medium text-yellow-400 mb-1">Free Tier Limit</p>
-                <p className="text-sm text-yellow-300/80 mb-3">
-                  You're seeing your last 3 games. Upgrade to Premium to access your full game history.
-                </p>
-                <Button size="sm" variant="outline" className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10">
-                  Upgrade to Premium
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard 
-            label="Active Games" 
-            value={activeGames.length}
-            icon={Play}
-          />
-          <StatCard 
-            label="Total in Play" 
-            value={formatCurrency(totalPot)}
-            icon={DollarSign}
-          />
-        </div>
-
-        {/* Quick Actions */}
-        <div className="flex gap-3">
-          <Button 
-            onClick={() => navigate('/games/new')}
-            className="flex-1"
-            size="lg"
-          >
-            <Plus className="w-5 h-5" />
-            New Game
-          </Button>
-          <Button 
-            variant="secondary"
-            onClick={() => navigate('/players')}
-            className="flex-1"
-            size="lg"
-          >
-            <Users className="w-5 h-5" />
-            Players
-          </Button>
-        </div>
-
+      <main className="px-4 py-4 space-y-6 page-enter">
         {/* Active Games */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-white">Active Games</h2>
-            {activeGames.length > 0 && (
-              <Link to="/games?status=ACTIVE" className="text-sm text-felt-400 flex items-center gap-1">
-                View all <ChevronRight className="w-4 h-4" />
-              </Link>
-            )}
-          </div>
-
-          {activeGames.length === 0 ? (
-            <Card className="p-6">
-              <EmptyState
-                icon={Play}
-                title="No active games"
-                description="Start a new game or check your scheduled games"
-                action={
-                  <Button onClick={() => navigate('/games/new')} size="sm">
-                    <Plus className="w-4 h-4" /> Start Game
-                  </Button>
-                }
-              />
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {activeGames.map(game => (
-                <GameCard key={game.id} game={game} onClick={() => navigate(`/games/${game.id}`)} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Upcoming Games */}
-        {scheduledGames.length > 0 && (
+        {active.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-white">Upcoming</h2>
-              <Link to="/games?status=SCHEDULED" className="text-sm text-felt-400 flex items-center gap-1">
-                View all <ChevronRight className="w-4 h-4" />
-              </Link>
-            </div>
-            <div className="space-y-2">
-              {scheduledGames.slice(0, 3).map(game => (
-                <UpcomingGameRow key={game.id} game={game} onClick={() => navigate(`/games/${game.id}`)} />
+            <h2 className="text-sm font-semibold text-gray-400 uppercase mb-3">Live Games</h2>
+            <div className="space-y-3">
+              {active.map(g => (
+                <Card key={g.id} className="p-4 cursor-pointer hover:border-felt-500 transition" onClick={() => navigate(`/game/${g.id}`)}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-bold text-white">{g.name}</h3>
+                    <Badge variant={g.status === 'ACTIVE' ? 'success' : 'warning'}>{g.status === 'ACTIVE' ? 'Live' : 'Paused'}</Badge>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-400">
+                    <span><Users className="w-3.5 h-3.5 inline mr-1" />{g._count?.players || g.players?.length || 0}</span>
+                    <span>{fmtPts(g.buyInAmount)} buy-in</span>
+                  </div>
+                </Card>
               ))}
             </div>
           </section>
         )}
 
-        {/* Recent Activity */}
-        {recentGames.length > 0 && (
+        {/* Scheduled */}
+        {scheduled.length > 0 && (
           <section>
-            <h2 className="text-lg font-bold text-white mb-3">Recent Games</h2>
-            <Card className="divide-y divide-gray-800">
-              {recentGames.map(game => (
-                <div 
-                  key={game.id} 
-                  className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-800/50"
-                  onClick={() => navigate(`/games/${game.id}`)}
-                >
+            <h2 className="text-sm font-semibold text-gray-400 uppercase mb-3">Upcoming</h2>
+            {scheduled.map(g => (
+              <Card key={g.id} className="p-4 cursor-pointer hover:border-gray-700 transition mb-2" onClick={() => navigate(`/game/${g.id}`)}>
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-white">{game.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {new Date(game.endTime).toLocaleDateString()} • {game._count?.players || 0} players
-                    </p>
+                    <h3 className="font-semibold text-white">{g.name}</h3>
+                    <p className="text-sm text-gray-400">{fmtPts(g.buyInAmount)} buy-in • {new Date(g.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-500" />
+                  <ChevronRight className="w-5 h-5 text-gray-600" />
                 </div>
-              ))}
-            </Card>
+              </Card>
+            ))}
           </section>
+        )}
+
+        {/* Recent Completed */}
+        {recent.length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase mb-3">Recent</h2>
+            {recent.map(g => (
+              <Card key={g.id} className="p-4 cursor-pointer hover:border-gray-700 transition mb-2" onClick={() => navigate(`/game/${g.id}`)}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white">{g.name}</h3>
+                    <p className="text-sm text-gray-400">{fmtTime(g.startTime)} • {g._count?.players || 0} players</p>
+                  </div>
+                  <Badge variant="info">Done</Badge>
+                </div>
+              </Card>
+            ))}
+          </section>
+        )}
+
+        {/* Empty state */}
+        {games.length === 0 && (
+          <EmptyState
+            icon={Home}
+            title="No games yet"
+            description={isHost ? "Create your first game to get started" : "You'll see games here once a host adds you"}
+            action={isHost && <button onClick={() => navigate('/create-game')} className="btn-primary">Create Game</button>}
+          />
         )}
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 safe-area-bottom">
-        <div className="grid grid-cols-4 gap-1 px-2 py-2">
-          <NavItem icon={Spade} label="Games" active />
-          <NavItem icon={Users} label="Players" onClick={() => navigate('/players')} />
-          <NavItem icon={TrendingUp} label="Stats" onClick={() => navigate('/stats')} />
-          <NavItem icon={Calendar} label="History" onClick={() => navigate('/history')} />
-        </div>
-      </nav>
+      <BottomNav current={location.pathname} navigate={navigate} isHost={isHost} />
     </div>
   );
 }
 
-// Game Card Component
-function GameCard({ game, onClick }) {
-  const playerCount = game._count?.players || game.players?.length || 0;
-  const totalPot = parseFloat(game._sum?.totalInvested || 0);
+export function BottomNav({ current, navigate, isHost }) {
+  const tabs = [
+    { path: '/', icon: Home, label: 'Home' },
+    { path: '/players', icon: Users, label: 'Players' },
+    { path: '/stats', icon: BarChart3, label: 'Stats' },
+    { path: '/history', icon: Clock, label: 'History' },
+    { path: '/inbox', icon: Inbox, label: 'Inbox' },
+    { path: '/profile', icon: Settings, label: 'Profile' },
+  ];
 
   return (
-    <Card hover className="p-4 cursor-pointer" onClick={onClick}>
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h3 className="font-bold text-white">{game.name}</h3>
-          <p className="text-sm text-gray-400">
-            {game.gameType?.replace('_', ' ')} • ${game.blindsSmall}/${game.blindsBig}
-          </p>
-        </div>
-        <Badge variant="success">Live</Badge>
+    <nav className="bottom-nav">
+      <div className="flex items-center justify-around px-2 pt-2">
+        {tabs.map(t => {
+          const active = current === t.path;
+          return (
+            <button key={t.path} onClick={() => navigate(t.path)}
+              className={`flex flex-col items-center gap-0.5 py-1 px-2 min-w-[48px] ${active ? 'text-felt-400' : 'text-gray-500'}`}>
+              <t.icon className="w-5 h-5" />
+              <span className="text-[10px]">{t.label}</span>
+            </button>
+          );
+        })}
       </div>
-      
-      <div className="grid grid-cols-3 gap-4 text-center">
-        <div>
-          <p className="text-2xl font-bold text-white">{playerCount}</p>
-          <p className="text-xs text-gray-400">Players</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold text-felt-400 chip-amount">{formatCurrency(totalPot)}</p>
-          <p className="text-xs text-gray-400">Total Pot</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold text-white">{formatCurrency(totalPot / (playerCount || 1))}</p>
-          <p className="text-xs text-gray-400">Avg Stack</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// Upcoming Game Row
-function UpcomingGameRow({ game, onClick }) {
-  const startTime = new Date(game.startTime);
-  
-  return (
-    <Card 
-      hover 
-      className="p-3 flex items-center gap-3 cursor-pointer" 
-      onClick={onClick}
-    >
-      <div className="w-12 h-12 rounded-lg bg-felt-500/20 flex flex-col items-center justify-center">
-        <span className="text-xs text-felt-400 font-bold uppercase">
-          {startTime.toLocaleDateString('en', { month: 'short' })}
-        </span>
-        <span className="text-lg font-bold text-white leading-none">
-          {startTime.getDate()}
-        </span>
-      </div>
-      <div className="flex-1">
-        <p className="font-medium text-white">{game.name}</p>
-        <p className="text-xs text-gray-400">
-          {startTime.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' })} • 
-          ${game.buyInAmount} buy-in
-        </p>
-      </div>
-      <ChevronRight className="w-5 h-5 text-gray-500" />
-    </Card>
-  );
-}
-
-// Nav Item
-function NavItem({ icon: Icon, label, active, onClick }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={`flex flex-col items-center py-2 px-1 rounded-lg transition-colors ${
-        active 
-          ? 'text-felt-400 bg-felt-500/10' 
-          : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800'
-      }`}
-    >
-      <Icon className="w-5 h-5" />
-      <span className="text-xs mt-1">{label}</span>
-    </button>
+    </nav>
   );
 }

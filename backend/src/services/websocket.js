@@ -1,253 +1,54 @@
-/**
- * WebSocket Service for Real-time Game Updates
- */
-
+const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+const { JWT_SECRET } = require('../middleware/auth');
 
-// Store connected clients
-const clients = new Map();
-const gameRooms = new Map();
+let wss = null;
+const gameRooms = new Map(); // gameId -> Set<ws>
 
-/**
- * Setup WebSocket server
- */
-const setupWebSocket = (wss) => {
+const initWebSocket = (server) => {
+  wss = new WebSocket.Server({ server, path: '/ws' });
   wss.on('connection', (ws, req) => {
-    const clientId = uuidv4();
-    let userId = null;
-    let currentGameId = null;
-
-    console.log(`WebSocket client connected: ${clientId}`);
-
-    // Handle incoming messages
-    ws.on('message', async (data) => {
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+    ws.on('message', (data) => {
       try {
-        const message = JSON.parse(data);
-
-        switch (message.type) {
-          case 'AUTH':
-            // Authenticate the connection
-            userId = await authenticateWebSocket(message.token);
-            if (userId) {
-              clients.set(clientId, { ws, userId });
-              ws.send(JSON.stringify({ 
-                type: 'AUTH_SUCCESS', 
-                userId,
-                clientId 
-              }));
-            } else {
-              ws.send(JSON.stringify({ 
-                type: 'AUTH_FAILED', 
-                error: 'Invalid token' 
-              }));
-            }
-            break;
-
-          case 'JOIN_GAME':
-            if (!userId) {
-              ws.send(JSON.stringify({ type: 'ERROR', error: 'Not authenticated' }));
-              return;
-            }
-            currentGameId = message.gameId;
-            joinGameRoom(clientId, message.gameId);
-            ws.send(JSON.stringify({ 
-              type: 'JOINED_GAME', 
-              gameId: message.gameId 
-            }));
-            break;
-
-          case 'LEAVE_GAME':
-            if (currentGameId) {
-              leaveGameRoom(clientId, currentGameId);
-              currentGameId = null;
-            }
-            break;
-
-          case 'PING':
-            ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
-            break;
-
-          default:
-            console.log('Unknown message type:', message.type);
+        const msg = JSON.parse(data);
+        if (msg.type === 'AUTH') {
+          try {
+            const decoded = jwt.verify(msg.token, JWT_SECRET);
+            ws.userId = decoded.userId;
+            ws.send(JSON.stringify({ type: 'AUTH_OK' }));
+          } catch { ws.send(JSON.stringify({ type: 'AUTH_FAIL' })); }
+        } else if (msg.type === 'JOIN_GAME') {
+          if (ws.gameId) { gameRooms.get(ws.gameId)?.delete(ws); }
+          ws.gameId = msg.gameId;
+          if (!gameRooms.has(msg.gameId)) gameRooms.set(msg.gameId, new Set());
+          gameRooms.get(msg.gameId).add(ws);
+        } else if (msg.type === 'LEAVE_GAME') {
+          if (ws.gameId) { gameRooms.get(ws.gameId)?.delete(ws); ws.gameId = null; }
         }
-      } catch (error) {
-        console.error('WebSocket message error:', error);
-        ws.send(JSON.stringify({ type: 'ERROR', error: 'Invalid message format' }));
-      }
+      } catch {}
     });
+    ws.on('close', () => { if (ws.gameId) gameRooms.get(ws.gameId)?.delete(ws); });
+  });
 
-    // Handle disconnection
-    ws.on('close', () => {
-      console.log(`WebSocket client disconnected: ${clientId}`);
-      clients.delete(clientId);
-      if (currentGameId) {
-        leaveGameRoom(clientId, currentGameId);
-      }
+  setInterval(() => {
+    wss.clients.forEach(ws => {
+      if (!ws.isAlive) return ws.terminate();
+      ws.isAlive = false;
+      ws.ping();
     });
-
-    ws.on('error', (error) => {
-      console.error(`WebSocket error for ${clientId}:`, error);
-    });
-
-    // Send welcome message
-    ws.send(JSON.stringify({ 
-      type: 'CONNECTED', 
-      clientId,
-      message: 'Please authenticate with AUTH message' 
-    }));
-  });
-
-  console.log('WebSocket server initialized');
+  }, 30000);
 };
 
-/**
- * Authenticate WebSocket connection
- */
-const authenticateWebSocket = async (token) => {
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return decoded.userId;
-  } catch (error) {
-    return null;
-  }
+const broadcast = (gameId, message) => {
+  const clients = gameRooms.get(gameId);
+  if (!clients) return;
+  const data = JSON.stringify(message);
+  clients.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.send(data); });
 };
 
-/**
- * Join a game room for real-time updates
- */
-const joinGameRoom = (clientId, gameId) => {
-  if (!gameRooms.has(gameId)) {
-    gameRooms.set(gameId, new Set());
-  }
-  gameRooms.get(gameId).add(clientId);
-  console.log(`Client ${clientId} joined game room ${gameId}`);
-};
+const notifyTransaction = (gameId, tx) => broadcast(gameId, { type: 'TRANSACTION', gameId, data: tx });
+const broadcastGameUpdate = (gameId, data) => broadcast(gameId, { type: 'GAME_UPDATE', gameId, data });
 
-/**
- * Leave a game room
- */
-const leaveGameRoom = (clientId, gameId) => {
-  const room = gameRooms.get(gameId);
-  if (room) {
-    room.delete(clientId);
-    if (room.size === 0) {
-      gameRooms.delete(gameId);
-    }
-  }
-};
-
-/**
- * Broadcast message to all clients in a game room
- */
-const broadcastToGame = (gameId, message) => {
-  const room = gameRooms.get(gameId);
-  if (!room) return;
-
-  const payload = JSON.stringify(message);
-  
-  room.forEach((clientId) => {
-    const client = clients.get(clientId);
-    if (client && client.ws.readyState === 1) { // WebSocket.OPEN
-      client.ws.send(payload);
-    }
-  });
-};
-
-/**
- * Send message to specific user
- */
-const sendToUser = (userId, message) => {
-  const payload = JSON.stringify(message);
-  
-  clients.forEach((client) => {
-    if (client.userId === userId && client.ws.readyState === 1) {
-      client.ws.send(payload);
-    }
-  });
-};
-
-/**
- * Broadcast game state update
- */
-const broadcastGameUpdate = (gameId, updateType, data) => {
-  broadcastToGame(gameId, {
-    type: 'GAME_UPDATE',
-    updateType,
-    gameId,
-    data,
-    timestamp: Date.now()
-  });
-};
-
-/**
- * Notify about top-up request
- */
-const notifyTopUpRequest = (gameId, hostId, request) => {
-  // Broadcast to game room
-  broadcastToGame(gameId, {
-    type: 'TOP_UP_REQUEST',
-    request,
-    timestamp: Date.now()
-  });
-
-  // Also notify host specifically
-  sendToUser(hostId, {
-    type: 'TOP_UP_REQUEST_ALERT',
-    request,
-    timestamp: Date.now()
-  });
-};
-
-/**
- * Notify about top-up status change
- */
-const notifyTopUpStatus = (gameId, playerId, request, status) => {
-  broadcastToGame(gameId, {
-    type: 'TOP_UP_STATUS',
-    request,
-    status,
-    timestamp: Date.now()
-  });
-
-  sendToUser(playerId, {
-    type: 'TOP_UP_RESPONSE',
-    request,
-    status,
-    timestamp: Date.now()
-  });
-};
-
-/**
- * Notify about transaction
- */
-const notifyTransaction = (gameId, transaction) => {
-  broadcastToGame(gameId, {
-    type: 'TRANSACTION',
-    transaction,
-    timestamp: Date.now()
-  });
-};
-
-/**
- * Notify game status change
- */
-const notifyGameStatus = (gameId, status, data = {}) => {
-  broadcastToGame(gameId, {
-    type: 'GAME_STATUS',
-    status,
-    data,
-    timestamp: Date.now()
-  });
-};
-
-module.exports = {
-  setupWebSocket,
-  broadcastToGame,
-  sendToUser,
-  broadcastGameUpdate,
-  notifyTopUpRequest,
-  notifyTopUpStatus,
-  notifyTransaction,
-  notifyGameStatus
-};
+module.exports = { initWebSocket, notifyTransaction, broadcastGameUpdate, broadcast };

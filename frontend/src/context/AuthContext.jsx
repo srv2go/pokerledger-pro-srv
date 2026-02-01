@@ -4,119 +4,112 @@ import wsService from '../services/websocket';
 
 const AuthContext = createContext(null);
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [needsPin, setNeedsPin] = useState(false);
 
-  // Check for existing session on mount
+  // Try auto-login on mount
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      loadUser();
-    } else {
+    const tryAutoLogin = async () => {
+      const token = localStorage.getItem('token');
+      const rememberToken = localStorage.getItem('rememberToken');
+      const savedUserId = localStorage.getItem('userId');
+
+      if (token) {
+        try {
+          const { user } = await authApi.getProfile();
+          setUser(user);
+          wsService.connect(token);
+          if (user.hasPin && savedUserId) {
+            // User has PIN - could prompt, but for smooth UX just let them in if token valid
+          }
+        } catch {
+          // Token expired, try remember token
+          if (rememberToken) {
+            try {
+              const data = await authApi.autoLogin(rememberToken);
+              localStorage.setItem('token', data.token);
+              localStorage.setItem('rememberToken', data.rememberToken);
+              localStorage.setItem('userId', data.user.id);
+              setUser(data.user);
+              wsService.connect(data.token);
+            } catch {
+              clearAuth();
+            }
+          } else {
+            clearAuth();
+          }
+        }
+      } else if (rememberToken) {
+        try {
+          const data = await authApi.autoLogin(rememberToken);
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('rememberToken', data.rememberToken);
+          localStorage.setItem('userId', data.user.id);
+          setUser(data.user);
+          wsService.connect(data.token);
+        } catch {
+          clearAuth();
+        }
+      }
       setLoading(false);
-    }
+    };
+    tryAutoLogin();
   }, []);
 
-  const loadUser = async () => {
-    try {
-      setLoading(true);
-      const { user } = await authApi.getProfile();
-      setUser(user);
-      
-      // Connect WebSocket
-      await wsService.connect();
-    } catch (err) {
-      console.error('Failed to load user:', err);
-      localStorage.removeItem('token');
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
+  const clearAuth = () => {
+    localStorage.removeItem('token');
+    // Keep rememberToken for next auto-login attempt
+    setUser(null);
   };
 
-  const login = useCallback(async (email, password) => {
-    setError(null);
-    try {
-      const { user, token } = await authApi.login({ email, password });
-      localStorage.setItem('token', token);
-      setUser(user);
-      
-      // Connect WebSocket
-      await wsService.connect();
-      
-      return user;
-    } catch (err) {
-      setError(err.message || 'Login failed');
-      throw err;
-    }
-  }, []);
+  const login = async (email, password, rememberMe = true) => {
+    const data = await authApi.login({ email, password, rememberMe });
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('userId', data.user.id);
+    if (data.rememberToken) localStorage.setItem('rememberToken', data.rememberToken);
+    setUser(data.user);
+    wsService.connect(data.token);
+    return data.user;
+  };
 
-  const register = useCallback(async (userData) => {
-    setError(null);
-    try {
-      const { user, token } = await authApi.register(userData);
-      localStorage.setItem('token', token);
-      setUser(user);
-      
-      // Connect WebSocket
-      await wsService.connect();
-      
-      return user;
-    } catch (err) {
-      setError(err.message || 'Registration failed');
-      throw err;
-    }
-  }, []);
+  const register = async (formData) => {
+    const data = await authApi.register(formData);
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('userId', data.user.id);
+    if (data.rememberToken) localStorage.setItem('rememberToken', data.rememberToken);
+    setUser(data.user);
+    wsService.connect(data.token);
+    return data.user;
+  };
 
-  const logout = useCallback(() => {
+  const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('rememberToken');
+    localStorage.removeItem('userId');
     setUser(null);
     wsService.disconnect();
-  }, []);
-
-  const updateProfile = useCallback(async (data) => {
-    try {
-      const { user: updatedUser } = await authApi.updateProfile(data);
-      setUser(prev => ({ ...prev, ...updatedUser }));
-      return updatedUser;
-    } catch (err) {
-      throw err;
-    }
-  }, []);
-
-  const updateUser = useCallback((userData) => {
-    setUser(prev => ({ ...prev, ...userData }));
-  }, []);
-
-  const value = {
-    user,
-    loading,
-    error,
-    isAuthenticated: !!user,
-    isHost: user?.role === 'HOST',
-    login,
-    register,
-    logout,
-    updateProfile,
-    updateUser,
-    refreshUser: loadUser,
   };
 
+  const verifyPin = async (pin) => {
+    const userId = localStorage.getItem('userId');
+    const data = await authApi.verifyPin(userId, pin);
+    localStorage.setItem('token', data.token);
+    setUser(data.user);
+    wsService.connect(data.token);
+    setNeedsPin(false);
+  };
+
+  const isHost = user && ['SUPER_ADMIN', 'ADMIN', 'HOST'].includes(user.role);
+  const isAdmin = user && ['SUPER_ADMIN', 'ADMIN'].includes(user.role);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, verifyPin, needsPin, isHost, isAdmin, isSuperAdmin, setUser }}>
       {children}
     </AuthContext.Provider>
   );
 };
-
-export default AuthContext;

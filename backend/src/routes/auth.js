@@ -3,308 +3,177 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
+const { JWT_SECRET, authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-/**
- * POST /api/auth/register
- * Register a new user
- */
+const generateToken = (userId, expiresIn = '7d') =>
+  jwt.sign({ userId }, JWT_SECRET, { expiresIn });
+
+const generateRememberToken = (userId) =>
+  jwt.sign({ userId, remember: true }, JWT_SECRET, { expiresIn: '90d' });
+
+// ─── REGISTER ────────────────────────────────────────────
 router.post('/register', [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
-  body('displayName').trim().isLength({ min: 2, max: 100 }),
-  body('phone').optional().isMobilePhone(),
-  body('role').optional().isIn(['HOST', 'PLAYER'])
+  body('displayName').trim().isLength({ min: 2 }),
+  body('phone').optional().trim(),
+  body('pin').optional().isLength({ min: 4, max: 6 }),
+  body('role').optional().isIn(['PLAYER', 'HOST']),  // only these via self-reg
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { email, password, displayName, phone, pin, role = 'PLAYER' } = req.body;
+
+    if (await prisma.user.findUnique({ where: { email } })) {
+      return res.status(409).json({ error: 'Email already registered' });
     }
 
-    const { email, password, displayName, phone, role = 'HOST' } = req.body;
-
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
-    // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
+    const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
 
-    // Create user
     const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        displayName,
-        phone,
-        role
-      },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        phone: true,
-        role: true,
-        createdAt: true
-      }
+      data: { email, passwordHash, displayName, phone, pin: pinHash, role },
+      select: { id: true, email: true, displayName: true, phone: true, role: true, subscription: true, whatsappEnabled: true }
     });
 
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
+    const token = generateToken(user.id);
+    const rememberToken = generateRememberToken(user.id);
 
-    res.status(201).json({
-      message: 'Registration successful',
-      user,
-      token
-    });
-  } catch (error) {
-    next(error);
-  }
+    res.status(201).json({ user, token, rememberToken });
+  } catch (err) { next(err); }
 });
 
-/**
- * POST /api/auth/login
- * User login
- */
+// ─── LOGIN ───────────────────────────────────────────────
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty()
+  body('password').isLength({ min: 1 }),
+  body('rememberMe').optional().isBoolean(),
 ], async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    const { email, password, rememberMe } = req.body;
 
-    const { email, password } = req.body;
-
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
-
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Verify password
-    const validPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const token = generateToken(user.id, rememberMe ? '30d' : '7d');
+    let rememberToken = null;
+
+    if (rememberMe) {
+      rememberToken = generateRememberToken(user.id);
+      await prisma.user.update({ where: { id: user.id }, data: { rememberToken } });
     }
 
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
+    const { passwordHash: _, pin: __, ...safeUser } = user;
+    res.json({ user: safeUser, token, rememberToken });
+  } catch (err) { next(err); }
+});
 
-    res.json({
-      message: 'Login successful',
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        phone: user.phone,
-        role: user.role
-      },
-      token
-    });
-  } catch (error) {
-    next(error);
+// ─── AUTO-LOGIN (remember me token) ─────────────────────
+router.post('/auto-login', async (req, res, next) => {
+  try {
+    const { rememberToken } = req.body;
+    if (!rememberToken) return res.status(401).json({ error: 'No token' });
+
+    const decoded = jwt.verify(rememberToken, JWT_SECRET);
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    const token = generateToken(user.id, '30d');
+    const newRememberToken = generateRememberToken(user.id);
+    await prisma.user.update({ where: { id: user.id }, data: { rememberToken: newRememberToken } });
+
+    const { passwordHash: _, pin: __, ...safeUser } = user;
+    res.json({ user: safeUser, token, rememberToken: newRememberToken });
+  } catch (err) {
+    return res.status(401).json({ error: 'Token expired. Please login.' });
   }
 });
 
-/**
- * POST /api/auth/refresh
- * Refresh JWT token
- */
-router.post('/refresh', async (req, res, next) => {
+// ─── PIN VERIFY (quick unlock) ──────────────────────────
+router.post('/verify-pin', [body('pin').isLength({ min: 4, max: 6 })], async (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const { pin, userId } = req.body;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.pin) return res.status(400).json({ error: 'No PIN set' });
 
-    if (!token) {
-      return res.status(401).json({ error: 'Token required' });
-    }
+    const valid = await bcrypt.compare(pin, user.pin);
+    if (!valid) return res.status(401).json({ error: 'Invalid PIN' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
-    
-    // Check if user still exists
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, role: true }
-    });
-
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-
-    // Generate new token
-    const newToken = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
-
-    res.json({ token: newToken });
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-    next(error);
-  }
+    const token = generateToken(user.id, '30d');
+    const { passwordHash: _, pin: __, ...safeUser } = user;
+    res.json({ user: safeUser, token });
+  } catch (err) { next(err); }
 });
 
-/**
- * GET /api/auth/me
- * Get current user profile
- */
-router.get('/me', async (req, res, next) => {
+// ─── SET/UPDATE PIN ─────────────────────────────────────
+router.post('/set-pin', authenticate, [body('pin').isLength({ min: 4, max: 6 })], async (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({ error: 'Token required' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        phone: true,
-        avatarUrl: true,
-        role: true,
-        paymentMethods: true,
-        preferences: true,
-        createdAt: true,
-        _count: {
-          select: {
-            hostedGames: true,
-            gameParticipations: true
-          }
-        }
-      }
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json({ user });
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-    next(error);
-  }
+    const pinHash = await bcrypt.hash(req.body.pin, 10);
+    await prisma.user.update({ where: { id: req.user.id }, data: { pin: pinHash } });
+    res.json({ message: 'PIN set successfully' });
+  } catch (err) { next(err); }
 });
 
-/**
- * PUT /api/auth/profile
- * Update user profile
- */
-router.put('/profile', [
-  body('displayName').optional().trim().isLength({ min: 2, max: 100 }),
-  body('phone').optional().isMobilePhone(),
-  body('paymentMethods').optional().isArray()
-], async (req, res, next) => {
-  try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({ error: 'Token required' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { displayName, phone, paymentMethods, preferences } = req.body;
-
-    const updateData = {};
-    if (displayName) updateData.displayName = displayName;
-    if (phone !== undefined) updateData.phone = phone;
-    if (paymentMethods) updateData.paymentMethods = paymentMethods;
-    if (preferences) updateData.preferences = preferences;
-
-    const user = await prisma.user.update({
-      where: { id: decoded.userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        phone: true,
-        role: true,
-        paymentMethods: true,
-        preferences: true,
-        notificationsEnabled: true,
-        subscriptionTier: true
-      }
-    });
-
-    res.json({ user });
-  } catch (error) {
-    next(error);
-  }
+// ─── GET PROFILE ────────────────────────────────────────
+router.get('/me', authenticate, async (req, res) => {
+  const { passwordHash, pin, rememberToken, ...user } = req.user;
+  res.json({ user: { ...user, hasPin: !!pin } });
 });
 
-/**
- * PATCH /api/auth/profile/notifications
- * Update notification preferences
- */
-router.patch('/profile/notifications', [
-  body('notificationsEnabled').isBoolean()
-], async (req, res, next) => {
+// ─── UPDATE PROFILE ─────────────────────────────────────
+router.put('/profile', authenticate, async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { notificationsEnabled } = req.body;
-
+    const { displayName, phone, whatsappEnabled, preferences } = req.body;
     const user = await prisma.user.update({
       where: { id: req.user.id },
-      data: { notificationsEnabled },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        phone: true,
-        role: true,
-        notificationsEnabled: true,
-        subscriptionTier: true
-      }
+      data: {
+        ...(displayName && { displayName }),
+        ...(phone !== undefined && { phone }),
+        ...(whatsappEnabled !== undefined && { whatsappEnabled }),
+        ...(preferences && { preferences }),
+      },
+      select: { id: true, email: true, displayName: true, phone: true, role: true, subscription: true, whatsappEnabled: true }
+    });
+    res.json({ user });
+  } catch (err) { next(err); }
+});
+
+// ─── PROMOTE USER (super admin / admin only) ────────────
+router.post('/promote', authenticate, async (req, res, next) => {
+  try {
+    const { userId, role } = req.body;
+    const caller = req.user;
+
+    // Only SUPER_ADMIN can promote to ADMIN/SUPER_ADMIN
+    // ADMIN can promote to HOST
+    if (role === 'SUPER_ADMIN') {
+      if (caller.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Only super admin can promote to super admin' });
+      const superAdminCount = await prisma.user.count({ where: { role: 'SUPER_ADMIN' } });
+      if (superAdminCount >= 3) return res.status(400).json({ error: 'Maximum 3 super admins allowed' });
+    } else if (role === 'ADMIN') {
+      if (caller.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Only super admin can promote to admin' });
+    } else if (role === 'HOST') {
+      if (!['SUPER_ADMIN', 'ADMIN'].includes(caller.role)) return res.status(403).json({ error: 'Only admin+ can promote to host' });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { role, ...(role === 'HOST' && ['SUPER_ADMIN', 'ADMIN'].includes(caller.role) ? { managedById: caller.id } : {}) },
+      select: { id: true, email: true, displayName: true, role: true }
     });
 
-    res.json({ user, message: 'Notification preferences updated' });
-  } catch (error) {
-    next(error);
-  }
+    res.json({ user, message: `User promoted to ${role}` });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

@@ -1,307 +1,151 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { authApi } from '../services/api';
-import { Card, Button, Input, Avatar, LoadingScreen } from '../components/ui';
-import { ArrowLeft, User, Mail, Phone, LogOut, Edit2, Check, X, Bell, BellOff } from 'lucide-react';
+import { authApi, notificationsApi } from '../services/api';
+import { Card, Button, Input, Modal, Toast } from '../components/ui';
+import { BottomNav } from './Dashboard';
+import { useToast } from '../hooks';
+import { User, Shield, Bell, Key, LogOut, MessageCircle, Crown, ChevronRight } from 'lucide-react';
 
-export default function Profile() {
-  const { user, logout, updateUser } = useAuth();
-  const navigate = useNavigate();
-  const [editing, setEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  
-  const [formData, setFormData] = useState({
-    displayName: user?.displayName || '',
-    phone: user?.phone || '',
-    email: user?.email || '',
-  });
+export default function ProfilePage() {
+  const nav = useNavigate();
+  const { user, isHost, isAdmin, isSuperAdmin, logout, setUser } = useAuth();
+  const toast = useToast();
+  const [showPin, setShowPin] = useState(false);
+  const [pin, setPin] = useState('');
+  const [waEnabled, setWaEnabled] = useState(user?.whatsappEnabled ?? true);
 
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        displayName: user.displayName || '',
-        phone: user.phone || '',
-        email: user.email || '',
-      });
-    }
-  }, [user]);
-
-  const handleChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    setLoading(true);
-
+  const toggleWhatsApp = async () => {
+    const next = !waEnabled;
     try {
-      const updated = await authApi.updateProfile(formData);
-      updateUser(updated.user);
-      setSuccess('Profile updated successfully!');
-      setEditing(false);
-    } catch (err) {
-      setError(err.message || 'Failed to update profile');
-    } finally {
-      setLoading(false);
-    }
+      await notificationsApi.toggleWhatsapp(next);
+      setWaEnabled(next);
+      toast.success(next ? 'WhatsApp enabled' : 'WhatsApp disabled');
+    } catch (e) { toast.error(e.message); }
   };
 
-  const handleCancel = () => {
-    setFormData({
-      displayName: user?.displayName || '',
-      phone: user?.phone || '',
-      email: user?.email || '',
-    });
-    setEditing(false);
-    setError('');
-  };
-
-  const handleLogout = () => {
-    if (confirm('Are you sure you want to logout?')) {
-      logout();
-      navigate('/login');
-    }
-  };
-
-  const toggleNotifications = async () => {
-    setNotificationsLoading(true);
+  const savePin = async () => {
     try {
-      const newValue = !Boolean(user?.notificationsEnabled);
-      const updated = await authApi.updateNotificationPreferences(newValue);
-      updateUser(updated.user);
-      setSuccess(newValue ? 'Notifications enabled' : 'Notifications disabled');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError(err.message || 'Failed to update notification settings');
-      setTimeout(() => setError(''), 3000);
-    } finally {
-      setNotificationsLoading(false);
-    }
+      await authApi.setPin(pin);
+      toast.success('PIN set');
+      setShowPin(false);
+      setPin('');
+    } catch (e) { toast.error(e.message); }
   };
 
-  if (!user) {
-    return <LoadingScreen />;
-  }
+  const handleLogout = () => { logout(); nav('/login', { replace: true }); };
+
+  const roleIcon = { SUPER_ADMIN: '👑', ADMIN: '🛡️', HOST: '🃏', PLAYER: '👤' }[user?.role] || '👤';
+  const roleColor = { SUPER_ADMIN: 'text-gold-400', ADMIN: 'text-purple-400', HOST: 'text-felt-400', PLAYER: 'text-blue-400' }[user?.role];
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-6">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-md border-b border-gray-800">
-        <div className="px-4 py-4 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/')}
-            className="p-2 -ml-2 rounded-lg hover:bg-gray-800"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-400" />
-          </button>
-          <h1 className="font-bold text-white">Profile</h1>
-          <div className="w-9" /> {/* Spacer */}
-        </div>
+    <div className="min-h-screen bg-gray-950 pb-24">
+      <header className="sticky-header px-4 py-3">
+        <h1 className="text-lg font-bold text-white">Profile</h1>
       </header>
 
-      <div className="px-4 py-6 space-y-6">
-        {/* Profile Avatar */}
-        <div className="flex flex-col items-center">
-          <Avatar 
-            name={user.displayName} 
-            size="xl"
-            className="mb-4"
-          />
-          <h2 className="text-xl font-bold text-white">{user.displayName}</h2>
-          <p className="text-sm text-gray-400 capitalize">{user.role?.toLowerCase()}</p>
-        </div>
-
-        {/* Success/Error Messages */}
-        {success && (
-          <Card className="bg-green-500/10 border-green-500/20">
-            <p className="text-sm text-green-400">{success}</p>
-          </Card>
-        )}
-        
-        {error && (
-          <Card className="bg-red-500/10 border-red-500/20">
-            <p className="text-sm text-red-400">{error}</p>
-          </Card>
-        )}
-
-        {/* Profile Info */}
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-white">Personal Information</h3>
-            {!editing ? (
-              <button
-                onClick={() => setEditing(true)}
-                className="p-2 rounded-lg hover:bg-gray-800 text-gray-400"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-            ) : null}
-          </div>
-
-          {editing ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                label="Display Name"
-                name="displayName"
-                value={formData.displayName}
-                onChange={handleChange}
-                icon={User}
-                required
-              />
-              
-              <Input
-                label="Email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                icon={Mail}
-                required
-                disabled
-                helpText="Email cannot be changed"
-              />
-              
-              <Input
-                label="Phone Number"
-                name="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={handleChange}
-                icon={Phone}
-                placeholder="+1 (555) 000-0000"
-              />
-
-              <div className="flex gap-2 pt-2">
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1"
-                >
-                  <Check className="w-4 h-4" />
-                  Save Changes
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleCancel}
-                  disabled={loading}
-                >
-                  <X className="w-4 h-4" />
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Display Name
-                </label>
-                <p className="text-white">{user.displayName}</p>
-              </div>
-              
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Email
-                </label>
-                <p className="text-white">{user.email}</p>
-              </div>
-              
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Phone Number
-                </label>
-                <p className="text-white">{user.phone || 'Not provided'}</p>
-              </div>
-            </div>
-          )}
-        </Card>
-
-        {/* Account Info */}
-        <Card>
-          <h3 className="font-semibold text-white mb-4">Account Details</h3>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Account Type</span>
-              <span className="text-white font-medium capitalize">
-                {user.role?.toLowerCase()}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Member Since</span>
-              <span className="text-white">
-                {new Date(user.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Verified</span>
-              <span className={user.isVerified ? "text-green-400" : "text-yellow-400"}>
-                {user.isVerified ? 'Yes' : 'Pending'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Subscription</span>
-              <span className="text-white font-medium capitalize">
-                {user.subscriptionTier || 'FREE'}
-              </span>
+      <main className="px-4 py-4 space-y-4 page-enter">
+        {/* User card */}
+        <Card className="p-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-felt-600/20 rounded-full flex items-center justify-center text-2xl">{roleIcon}</div>
+            <div>
+              <p className="font-bold text-white text-lg">{user?.displayName}</p>
+              <p className="text-sm text-gray-400">{user?.email}</p>
+              <p className={`text-sm font-semibold ${roleColor} capitalize mt-0.5`}>{user?.role?.toLowerCase().replace('_', ' ')}</p>
             </div>
           </div>
         </Card>
 
-        {/* Notification Settings */}
-        <Card>
-          <h3 className="font-semibold text-white mb-4">Notification Settings</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {user.notificationsEnabled ? (
-                  <Bell className="w-5 h-5 text-green-400" />
-                ) : (
-                  <BellOff className="w-5 h-5 text-gray-400" />
-                )}
-                <div>
-                  <p className="text-white font-medium">WhatsApp Notifications</p>
-                  <p className="text-sm text-gray-400">
-                    Receive game updates via WhatsApp
-                  </p>
-                </div>
+        {/* Subscription */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Crown className="w-5 h-5 text-gold-400" />
+              <div>
+                <p className="text-white font-medium">Subscription</p>
+                <p className="text-sm text-gray-400">{user?.subscription === 'PREMIUM' ? 'Premium' : 'Free Plan'}</p>
               </div>
-              <Button
-                size="sm"
-                variant={user.notificationsEnabled ? "primary" : "secondary"}
-                onClick={toggleNotifications}
-                disabled={notificationsLoading}
-              >
-                {user.notificationsEnabled ? 'On' : 'Off'}
-              </Button>
             </div>
-            {!user.phone && (
-              <p className="text-sm text-yellow-400">
-                ⚠️ Add a phone number to receive notifications
-              </p>
+            {user?.subscription !== 'PREMIUM' && (
+              <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">Last 3 games</span>
             )}
           </div>
         </Card>
 
-        {/* Logout Button */}
-        <Button
-          variant="danger"
-          onClick={handleLogout}
-          className="w-full"
-        >
-          <LogOut className="w-4 h-4" />
-          Logout
+        {/* Settings */}
+        <Card className="divide-y divide-gray-800">
+          {/* WhatsApp Toggle */}
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <MessageCircle className="w-5 h-5 text-felt-400" />
+              <div>
+                <p className="text-white font-medium">WhatsApp Notifications</p>
+                <p className="text-xs text-gray-400">Receive game notifications via WhatsApp</p>
+              </div>
+            </div>
+            <button onClick={toggleWhatsApp}
+              className={`w-12 h-7 rounded-full transition-colors ${waEnabled ? 'bg-felt-600' : 'bg-gray-700'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full transition-transform ${waEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* PIN */}
+          <button onClick={() => setShowPin(true)} className="p-4 flex items-center justify-between w-full text-left">
+            <div className="flex items-center gap-3">
+              <Key className="w-5 h-5 text-amber-400" />
+              <div>
+                <p className="text-white font-medium">Security PIN</p>
+                <p className="text-xs text-gray-400">{user?.hasPin ? 'Change PIN' : 'Set up quick unlock PIN'}</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-600" />
+          </button>
+
+          {/* Phone */}
+          <div className="p-4">
+            <div className="flex items-center gap-3">
+              <Bell className="w-5 h-5 text-blue-400" />
+              <div>
+                <p className="text-white font-medium">Phone</p>
+                <p className="text-sm text-gray-400">{user?.phone || 'Not set'}</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Admin section */}
+        {isAdmin && (
+          <Card className="p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <Shield className="w-5 h-5 text-purple-400" />
+              <p className="text-white font-medium">Admin</p>
+            </div>
+            <p className="text-sm text-gray-400">
+              {isSuperAdmin ? 'Super Admin — full system access, can promote admins (max 3 super admins)' : 'Admin — manage hosts, view all game data'}
+            </p>
+          </Card>
+        )}
+
+        {/* Logout */}
+        <Button variant="danger" onClick={handleLogout} className="w-full">
+          <LogOut className="w-4 h-4" /> Sign Out
         </Button>
-      </div>
+      </main>
+
+      {/* PIN Modal */}
+      <Modal isOpen={showPin} onClose={() => { setShowPin(false); setPin(''); }} title="Set PIN">
+        <div className="p-4 space-y-4">
+          <Input label="4-6 digit PIN" type="password" value={pin} onChange={e => setPin(e.target.value)} maxLength={6} placeholder="••••" />
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => { setShowPin(false); setPin(''); }} className="flex-1">Cancel</Button>
+            <Button onClick={savePin} disabled={pin.length < 4} className="flex-1">Save PIN</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <BottomNav current="/profile" navigate={nav} isHost={isHost} />
+      <Toast toasts={toast.toasts} remove={toast.remove} />
     </div>
   );
 }

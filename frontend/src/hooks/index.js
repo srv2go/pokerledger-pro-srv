@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { gamesApi } from '../services/api';
 import wsService from '../services/websocket';
-import { formatPoints, formatProfitLoss } from '../utils/currency';
 
-/**
- * Hook for managing game state with real-time updates
- */
 export const useGame = (gameId) => {
   const [game, setGame] = useState(null);
   const [stats, setStats] = useState(null);
@@ -13,166 +9,61 @@ export const useGame = (gameId) => {
   const [error, setError] = useState(null);
   const [isHost, setIsHost] = useState(false);
 
-  const loadGame = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!gameId) return;
-    
-    try {
-      setLoading(true);
-      const data = await gamesApi.get(gameId);
-      setGame(data.game);
-      setStats(data.stats);
-      setIsHost(data.isHost);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    try { setLoading(true); const d = await gamesApi.get(gameId); setGame(d.game); setStats(d.stats); setIsHost(d.isHost); }
+    catch (e) { setError(e.message); }
+    finally { setLoading(false); }
   }, [gameId]);
 
+  useEffect(() => { load(); if (gameId) wsService.joinGame(gameId); return () => wsService.leaveGame(); }, [gameId, load]);
+
   useEffect(() => {
-    loadGame();
+    const u1 = wsService.on('TRANSACTION', () => load());
+    const u2 = wsService.on('GAME_UPDATE', (m) => { if (m.gameId === gameId) load(); });
+    return () => { u1(); u2(); };
+  }, [gameId, load]);
 
-    // Join game room for real-time updates
-    if (gameId) {
-      wsService.joinGame(gameId);
-    }
-
-    return () => {
-      wsService.leaveGame();
-    };
-  }, [gameId, loadGame]);
-
-  // Listen for real-time updates
-  useEffect(() => {
-    const unsubscribeGameUpdate = wsService.on('GAME_UPDATE', (message) => {
-      if (message.gameId === gameId) {
-        setGame(prev => ({ ...prev, ...message.data }));
-      }
-    });
-
-    const unsubscribeTransaction = wsService.on('TRANSACTION', (message) => {
-      loadGame(); // Reload game data on transaction
-    });
-
-    const unsubscribeGameStatus = wsService.on('GAME_STATUS', (message) => {
-      if (message.gameId === gameId) {
-        setGame(prev => ({ ...prev, status: message.status }));
-      }
-    });
-
-    return () => {
-      unsubscribeGameUpdate();
-      unsubscribeTransaction();
-      unsubscribeGameStatus();
-    };
-  }, [gameId, loadGame]);
-
-  return {
-    game,
-    stats,
-    loading,
-    error,
-    isHost,
-    refresh: loadGame,
-  };
+  return { game, stats, loading, error, isHost, refresh: load };
 };
 
-/**
- * Hook for managing games list
- */
-export const useGames = (initialStatus = null) => {
+export const useGames = () => {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const loadGames = useCallback(async (status = initialStatus) => {
-    try {
-      setLoading(true);
-      const params = {};
-      if (status) params.status = status;
-      const data = await gamesApi.list(params);
-      setGames(data.games);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [initialStatus]);
-
-  useEffect(() => {
-    loadGames();
-  }, [loadGames]);
-
-  return {
-    games,
-    loading,
-    error,
-    refresh: loadGames,
-  };
+  const load = useCallback(async (status) => {
+    try { setLoading(true); const d = await gamesApi.list(status ? { status } : {}); setGames(d.games); }
+    catch {} finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  return { games, loading, refresh: load };
 };
 
-/**
- * Hook for toast notifications
- */
 export const useToast = () => {
   const [toasts, setToasts] = useState([]);
-
-  const addToast = useCallback((message, type = 'info', duration = 4000) => {
+  const add = useCallback((msg, type = 'info', ms = 4000) => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-
-    if (duration > 0) {
-      setTimeout(() => {
-        setToasts(prev => prev.filter(t => t.id !== id));
-      }, duration);
-    }
-
+    setToasts(p => [...p, { id, message: msg, type }]);
+    if (ms > 0) setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), ms);
     return id;
   }, []);
-
-  const removeToast = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-
-  const success = useCallback((message, duration) => addToast(message, 'success', duration), [addToast]);
-  const error = useCallback((message, duration) => addToast(message, 'error', duration), [addToast]);
-  const info = useCallback((message, duration) => addToast(message, 'info', duration), [addToast]);
-
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success,
-    error,
-    info,
-  };
+  const remove = useCallback((id) => setToasts(p => p.filter(t => t.id !== id)), []);
+  return { toasts, add, remove, success: (m) => add(m, 'success'), error: (m) => add(m, 'error'), info: (m) => add(m, 'info') };
 };
 
-/**
- * Format currency - now uses points system
- */
-export const formatCurrency = (amount, showSign = false) => {
-  if (showSign) {
-    return formatProfitLoss(amount);
-  }
-  return formatPoints(amount);
+export const fmtPts = (amount, showSign = false) => {
+  const n = parseFloat(amount) || 0;
+  const abs = Math.abs(n);
+  if (showSign && n !== 0) return `${n > 0 ? '+' : '-'}${abs} pts`;
+  return `${n < 0 ? '-' : ''}${abs} pts`;
 };
 
-/**
- * Format relative time
- */
-export const formatRelativeTime = (date) => {
+export const fmtTime = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
   const now = new Date();
-  const then = new Date(date);
-  const diffMs = now - then;
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  
-  return then.toLocaleDateString();
+  const diff = (now - d) / 60000;
+  if (diff < 1) return 'Just now';
+  if (diff < 60) return `${Math.floor(diff)}m ago`;
+  if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };

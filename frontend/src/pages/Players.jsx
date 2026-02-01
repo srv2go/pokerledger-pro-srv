@@ -1,249 +1,100 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { playersApi } from '../services/api';
-import { Card, Button, Input, Avatar, LoadingScreen, EmptyState, Modal } from '../components/ui';
-import { ArrowLeft, Plus, Search, Users, Phone, Mail, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
-import { formatPoints } from '../utils/currency';
+import { useAuth } from '../context/AuthContext';
+import { Card, Button, Avatar, Input, Modal, EmptyState, Toast } from '../components/ui';
+import { BottomNav } from './Dashboard';
+import { useToast, fmtPts } from '../hooks';
+import { ArrowLeft, Search, UserPlus, Phone, Mail, Users } from 'lucide-react';
 
-export default function Players() {
-  const navigate = useNavigate();
+export default function PlayersPage() {
+  const nav = useNavigate();
+  const { isHost } = useAuth();
+  const toast = useToast();
   const [players, setPlayers] = useState([]);
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
 
-  useEffect(() => {
-    loadPlayers();
-  }, []);
-
-  const loadPlayers = async () => {
-    try {
-      setLoading(true);
-      const data = await playersApi.list();
-      setPlayers(data.players || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const load = async (q) => {
+    try { setLoading(true); const d = await playersApi.list(q || ''); setPlayers(d.players); }
+    catch {} finally { setLoading(false); }
   };
 
-  const filteredPlayers = players.filter(player =>
-    player.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    player.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    player.phone?.includes(searchQuery)
-  );
-
-  if (loading) {
-    return <LoadingScreen message="Loading players..." />;
-  }
+  useEffect(() => { load(); }, []);
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-6">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-md border-b border-gray-800">
-        {/* Safe area padding for status bar */}
-        <div className="h-safe-top bg-gray-900/95" />
-        <div className="px-4 py-4 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/')}
-            className="p-2 -ml-2 rounded-lg hover:bg-gray-800"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-400" />
-          </button>
-          <h1 className="font-bold text-white">Players</h1>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="p-2 -mr-2 rounded-lg bg-felt-500 hover:bg-felt-600 text-white shadow-lg"
-            aria-label="Add player"
-          >
-            <Plus className="w-6 h-6" />
-          </button>
+    <div className="min-h-screen bg-gray-950 pb-24">
+      {/* Header with safe area — + button positioned below status bar */}
+      <header className="sticky-header px-4 py-3">
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-bold text-white">Players</h1>
+          {isHost && (
+            <Button size="sm" variant="ghost" onClick={() => setShowAdd(true)}>
+              <UserPlus className="w-4 h-4" /> Add
+            </Button>
+          )}
+        </div>
+        {/* Search bar below header, not overlapping status bar */}
+        <div className="mt-3 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input className="input pl-10 text-sm" placeholder="Search players..." value={search}
+            onChange={e => { setSearch(e.target.value); load(e.target.value); }}
+          />
         </div>
       </header>
 
-      <div className="px-4 py-6 space-y-6">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search players..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-felt-500"
-          />
-        </div>
-
-        {error && (
-          <Card className="bg-red-500/10 border-red-500/20">
-            <p className="text-sm text-red-400">{error}</p>
-          </Card>
-        )}
-
-        {/* Players List */}
-        {filteredPlayers.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="No Players Found"
-            description={searchQuery ? "No players match your search" : "Add players to get started"}
-            action={!searchQuery && (
-              <Button onClick={() => setShowAddModal(true)}>
-                <Plus className="w-4 h-4" />
-                Add Player
-              </Button>
-            )}
-          />
+      <main className="px-4 py-4 page-enter">
+        {players.length === 0 && !loading ? (
+          <EmptyState icon={Users} title="No players" description={isHost ? "Add your first player" : "No players found"} />
         ) : (
-          <div className="space-y-3">
-            {filteredPlayers.map((player) => (
-              <PlayerCard key={player.id} player={player} />
+          <div className="space-y-2">
+            {players.map(p => (
+              <Card key={p.id} className="p-4 cursor-pointer hover:border-gray-700 transition" onClick={() => nav(`/player/${p.id}`)}>
+                <div className="flex items-center gap-3">
+                  <Avatar name={p.displayName} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white truncate">{p.displayName}</p>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      {p.phone && <span><Phone className="w-3 h-3 inline" /> {p.phone}</span>}
+                      {p.email && !p.email.includes('@temp.') && <span><Mail className="w-3 h-3 inline" /> {p.email}</span>}
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full ${p.role === 'HOST' ? 'bg-felt-500/20 text-felt-400' : p.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-400' : 'bg-gray-800 text-gray-400'}`}>
+                    {p.role}
+                  </span>
+                </div>
+              </Card>
             ))}
           </div>
         )}
-      </div>
+      </main>
 
-      {/* Add Player Modal */}
-      {showAddModal && (
-        <AddPlayerModal
-          onClose={() => setShowAddModal(false)}
-          onSuccess={() => {
-            setShowAddModal(false);
-            loadPlayers();
-          }}
-        />
-      )}
+      <AddPlayerModal isOpen={showAdd} onClose={() => setShowAdd(false)} onDone={(m) => { load(); toast.success(m); }} onErr={toast.error} />
+      <BottomNav current="/players" navigate={nav} isHost={isHost} />
+      <Toast toasts={toast.toasts} remove={toast.remove} />
     </div>
   );
 }
 
-function PlayerCard({ player }) {
-  const totalProfit = player.history?.reduce((sum, game) => sum + (game.profitLoss || 0), 0) || 0;
-  const gamesPlayed = player.history?.length || 0;
-
-  return (
-    <Card className="hover:border-felt-500/30 transition-colors cursor-pointer">
-      <div className="flex items-center gap-4">
-        <Avatar name={player.displayName} size="lg" />
-        
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-white truncate">{player.displayName}</h3>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            {player.phone && (
-              <span className="flex items-center gap-1">
-                <Phone className="w-3 h-3" />
-                {player.phone}
-              </span>
-            )}
-            {player.email && (
-              <span className="flex items-center gap-1 truncate">
-                <Mail className="w-3 h-3" />
-                {player.email}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="text-right">
-          <div className={`font-semibold ${totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totalProfit >= 0 ? <TrendingUp className="w-4 h-4 inline mr-1" /> : <TrendingDown className="w-4 h-4 inline mr-1" />}
-            {formatPoints(Math.abs(totalProfit))}
-          </div>
-          <p className="text-xs text-gray-500">{gamesPlayed} games</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function AddPlayerModal({ onClose, onSuccess }) {
+function AddPlayerModal({ isOpen, onClose, onDone, onErr }) {
+  const [form, setForm] = useState({ displayName: '', email: '', phone: '' });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [formData, setFormData] = useState({
-    displayName: '',
-    email: '',
-    phone: '',
-  });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  const handleChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      await playersApi.create(formData);
-      onSuccess();
-    } catch (err) {
-      setError(err.message || 'Failed to add player');
-    } finally {
-      setLoading(false);
-    }
+  const submit = async (e) => {
+    e.preventDefault(); setLoading(true);
+    try { await playersApi.create(form); onDone(`${form.displayName} added`); onClose(); setForm({ displayName: '', email: '', phone: '' }); }
+    catch (e) { onErr(e.message); } finally { setLoading(false); }
   };
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Add New Player">
-      <form onSubmit={handleSubmit} className="space-y-4 p-4">
-        {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
-        )}
-
-        <Input
-          label="Display Name"
-          name="displayName"
-          value={formData.displayName}
-          onChange={handleChange}
-          icon={Users}
-          required
-          placeholder="John Doe"
-        />
-
-        <Input
-          label="Email"
-          name="email"
-          type="email"
-          value={formData.email}
-          onChange={handleChange}
-          icon={Mail}
-          placeholder="john@example.com"
-        />
-
-        <Input
-          label="Phone"
-          name="phone"
-          type="tel"
-          value={formData.phone}
-          onChange={handleChange}
-          icon={Phone}
-          placeholder="+1 (555) 000-0000"
-        />
-
-        <div className="flex gap-2 pt-2">
-          <Button
-            type="submit"
-            disabled={loading}
-            className="flex-1"
-          >
-            Add Player
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} title="Add Player">
+      <form onSubmit={submit} className="p-4 space-y-4">
+        <Input label="Name" value={form.displayName} onChange={set('displayName')} required />
+        <Input label="Email" type="email" value={form.email} onChange={set('email')} />
+        <Input label="Phone" value={form.phone} onChange={set('phone')} placeholder="+1 555 123 4567" />
+        <div className="flex gap-3"><Button type="button" variant="secondary" onClick={onClose} className="flex-1">Cancel</Button><Button type="submit" loading={loading} className="flex-1">Add</Button></div>
       </form>
     </Modal>
   );

@@ -1,362 +1,185 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const { body } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
-const axios = require('axios');
+const { requireMinRole } = require('../middleware/auth');
+const { sendSettlementReminder } = require('../services/whatsapp');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-/**
- * GET /api/players
- * List all players (for host to select when creating games)
- */
+// ─── LIST PLAYERS ────────────────────────────────────────
 router.get('/', async (req, res, next) => {
   try {
-    const { search, limit = 50 } = req.query;
-
-    const where = {
-      role: { in: ['PLAYER', 'HOST'] }
-    };
-
+    const { search, role } = req.query;
+    const where = {};
     if (search) {
       where.OR = [
         { displayName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } }
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
       ];
     }
+    if (role) where.role = role;
 
     const players = await prisma.user.findMany({
       where,
-      select: {
-        id: true,
-        displayName: true,
-        email: true,
-        phone: true,
-        avatarUrl: true,
-        paymentMethods: true,
-        _count: {
-          select: { gameParticipations: true }
-        }
-      },
-      take: parseInt(limit),
-      orderBy: { displayName: 'asc' }
+      select: { id: true, displayName: true, email: true, phone: true, role: true, subscription: true, whatsappEnabled: true, createdAt: true },
+      orderBy: { displayName: 'asc' },
+      take: 100,
     });
-
     res.json({ players });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 });
 
-/**
- * POST /api/players
- * Create a new player (guest or regular)
- */
-router.post('/', [
-  body('displayName').trim().isLength({ min: 2, max: 100 }),
-  body('email').optional().isEmail().normalizeEmail(),
-  body('phone').optional().isMobilePhone(),
-  body('role').optional().isIn(['PLAYER', 'GUEST'])
-], async (req, res, next) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { displayName, email, phone, role = 'PLAYER' } = req.body;
-
-    // Check for existing user with same email
-    if (email) {
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) {
-        return res.status(400).json({ error: 'Email already registered' });
-      }
-    }
-
-    const player = await prisma.user.create({
-      data: {
-        displayName,
-        email: email || `guest_${Date.now()}@pokerledger.local`,
-        phone,
-        role
-      },
-      select: {
-        id: true,
-        displayName: true,
-        email: true,
-        phone: true,
-        role: true
-      }
-    });
-
-    res.status(201).json({ player });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * GET /api/players/:id
- * Get player details with stats
- */
+// ─── GET PLAYER ──────────────────────────────────────────
 router.get('/:id', async (req, res, next) => {
   try {
     const player = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: {
-        id: true,
-        displayName: true,
-        email: true,
-        phone: true,
-        avatarUrl: true,
-        role: true,
-        paymentMethods: true,
-        createdAt: true,
-        gameParticipations: {
-          include: {
-            game: {
-              select: {
-                id: true,
-                name: true,
-                gameType: true,
-                startTime: true,
-                status: true
-              }
-            }
-          },
-          orderBy: { joinedAt: 'desc' },
-          take: 20
-        }
-      }
+      select: { id: true, displayName: true, email: true, phone: true, role: true, subscription: true, whatsappEnabled: true, createdAt: true },
     });
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+    res.json({ player });
+  } catch (err) { next(err); }
+});
 
-    if (!player) {
-      return res.status(404).json({ error: 'Player not found' });
+// ─── CREATE PLAYER (host adds new player) ────────────────
+router.post('/', requireMinRole('HOST'), [
+  body('displayName').trim().notEmpty(),
+  body('email').optional().isEmail(),
+  body('phone').optional().trim(),
+], async (req, res, next) => {
+  try {
+    const { displayName, email, phone } = req.body;
+
+    // Check for existing by email or phone
+    if (email) {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) return res.json({ player: existing, existing: true });
     }
 
-    // Calculate lifetime stats
-    const allParticipations = await prisma.gamePlayer.findMany({
+    const player = await prisma.user.create({
+      data: {
+        displayName, email: email || `player_${Date.now()}@temp.local`, phone,
+        role: 'PLAYER', passwordHash: null,
+      },
+      select: { id: true, displayName: true, email: true, phone: true, role: true },
+    });
+    res.status(201).json({ player });
+  } catch (err) { next(err); }
+});
+
+// ─── UPDATE PLAYER ───────────────────────────────────────
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { displayName, phone, whatsappEnabled } = req.body;
+    const player = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { ...(displayName && { displayName }), ...(phone !== undefined && { phone }), ...(whatsappEnabled !== undefined && { whatsappEnabled }) },
+      select: { id: true, displayName: true, phone: true, role: true, whatsappEnabled: true },
+    });
+    res.json({ player });
+  } catch (err) { next(err); }
+});
+
+// ─── PLAYER GAME HISTORY ─────────────────────────────────
+router.get('/:id/history', async (req, res, next) => {
+  try {
+    const games = await prisma.gamePlayer.findMany({
       where: { playerId: req.params.id },
-      select: {
-        totalInvested: true,
-        cashOut: true,
-        finalBalance: true
-      }
+      include: {
+        game: { select: { id: true, name: true, gameType: true, status: true, startTime: true, endTime: true } },
+      },
+      orderBy: { joinedAt: 'desc' },
     });
 
     const stats = {
-      totalGames: allParticipations.length,
-      totalInvested: allParticipations.reduce((sum, p) => sum + parseFloat(p.totalInvested || 0), 0),
-      totalCashOut: allParticipations.reduce((sum, p) => sum + parseFloat(p.cashOut || 0), 0),
-      totalProfit: allParticipations.reduce((sum, p) => sum + parseFloat(p.finalBalance || 0), 0),
-      profitableGames: allParticipations.filter(p => parseFloat(p.finalBalance || 0) > 0).length
+      totalGames: games.length,
+      totalBuyIn: games.reduce((s, g) => s + parseFloat(g.totalInvested || 0), 0),
+      totalCashOut: games.reduce((s, g) => s + parseFloat(g.cashOut || 0), 0),
+      totalProfit: games.reduce((s, g) => s + parseFloat(g.finalBalance || 0), 0),
+      winRate: games.length > 0 ? (games.filter(g => parseFloat(g.finalBalance || 0) > 0).length / games.length * 100).toFixed(1) : 0,
     };
 
-    stats.winRate = stats.totalGames > 0 
-      ? ((stats.profitableGames / stats.totalGames) * 100).toFixed(1) 
-      : 0;
-
-    res.json({ player, stats });
-  } catch (error) {
-    next(error);
-  }
+    res.json({ games, stats });
+  } catch (err) { next(err); }
 });
 
-/**
- * PUT /api/players/:id
- * Update player details
- */
-router.put('/:id', [
-  body('displayName').optional().trim().isLength({ min: 2, max: 100 }),
-  body('phone').optional().isMobilePhone(),
-  body('paymentMethods').optional().isArray()
-], async (req, res, next) => {
+// ─── ROLLING BALANCES (host view of all players) ─────────
+router.get('/balances/rolling', requireMinRole('HOST'), async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    const hostId = req.user.id;
+    const balances = await prisma.rollingBalance.findMany({
+      where: { hostId },
+      include: {
+        player: { select: { id: true, displayName: true, phone: true, email: true, whatsappEnabled: true } },
+      },
+      orderBy: { balance: 'asc' },
+    });
 
-    const { displayName, phone, paymentMethods } = req.body;
-    const updateData = {};
+    res.json({ balances });
+  } catch (err) { next(err); }
+});
 
-    if (displayName) updateData.displayName = displayName;
-    if (phone !== undefined) updateData.phone = phone;
-    if (paymentMethods) updateData.paymentMethods = paymentMethods;
+// ─── SEND SETTLEMENT REMINDER ────────────────────────────
+router.post('/reminder/:playerId', requireMinRole('HOST'), async (req, res, next) => {
+  try {
+    const hostId = req.user.id;
+    const { playerId } = req.params;
+    const { message: customMessage } = req.body;
 
-    const player = await prisma.user.update({
-      where: { id: req.params.id },
-      data: updateData,
-      select: {
-        id: true,
-        displayName: true,
-        email: true,
-        phone: true,
-        paymentMethods: true
+    const balance = await prisma.rollingBalance.findUnique({
+      where: { playerId_hostId: { playerId, hostId } },
+      include: { player: { select: { id: true, displayName: true, phone: true, whatsappEnabled: true } } },
+    });
+
+    if (!balance) return res.status(404).json({ error: 'No balance record found' });
+
+    const player = balance.player;
+    const amount = Math.abs(parseFloat(balance.balance));
+    const owes = parseFloat(balance.balance) < 0;
+
+    // Create in-app message
+    await prisma.inboxMessage.create({
+      data: {
+        userId: playerId,
+        title: owes ? 'Settlement Reminder' : 'Balance Update',
+        body: customMessage || (owes
+          ? `You have an outstanding balance of ${amount} points. Please settle at your convenience.`
+          : `You have a credit balance of ${amount} points.`),
       }
     });
 
-    res.json({ player });
-  } catch (error) {
-    next(error);
-  }
+    // Send WhatsApp if enabled
+    if (player.phone && player.whatsappEnabled) {
+      await sendSettlementReminder(player, amount, owes, req.user.displayName).catch(console.warn);
+    }
+
+    res.json({ message: 'Reminder sent', owes, amount });
+  } catch (err) { next(err); }
 });
 
-/**
- * GET /api/players/:id/history
- * Get player's game history with detailed stats
- */
-router.get('/:id/history', async (req, res, next) => {
+// ─── SEND BALANCE SUMMARY (outside game) ─────────────────
+router.post('/send-summary/:playerId', requireMinRole('HOST'), async (req, res, next) => {
   try {
-    const { limit = 20, offset = 0 } = req.query;
+    const { playerId } = req.params;
+    const { message: customMessage } = req.body;
 
-    const [history, total] = await Promise.all([
-      prisma.gamePlayer.findMany({
-        where: { playerId: req.params.id },
-        include: {
-          game: {
-            select: {
-              id: true,
-              name: true,
-              gameType: true,
-              startTime: true,
-              endTime: true,
-              status: true,
-              buyInAmount: true,
-              host: {
-                select: { displayName: true }
-              }
-            }
-          }
-        },
-        orderBy: { joinedAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset)
-      }),
-      prisma.gamePlayer.count({ where: { playerId: req.params.id } })
-    ]);
-
-    const historyWithStats = history.map(h => ({
-      ...h,
-      profit: parseFloat(h.cashOut || 0) - parseFloat(h.totalInvested || 0)
-    }));
-
-    res.json({
-      history: historyWithStats,
-      pagination: { total, limit: parseInt(limit), offset: parseInt(offset) }
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/players/:id/send-reminder
- * Send payment reminder to player via WhatsApp
- */
-router.post('/:id/send-reminder', [
-  body('balance').isNumeric(),
-  body('totalBuyIn').isNumeric(),
-  body('totalCashOut').isNumeric()
-], async (req, res, next) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    const { balance, totalBuyIn, totalCashOut } = req.body;
-    const hostUser = req.user;
-
-    // Verify user is HOST, ADMIN, or SUPER_ADMIN
-    if (!['HOST', 'ADMIN', 'SUPER_ADMIN'].includes(hostUser.role)) {
-      return res.status(403).json({ error: 'Only hosts and admins can send reminders' });
-    }
-
-    // Get player details
-    const player = await prisma.user.findUnique({
-      where: { id },
-      select: { id: true, displayName: true, phone: true, notificationsEnabled: true }
+    const balance = await prisma.rollingBalance.findUnique({
+      where: { playerId_hostId: { playerId, hostId: req.user.id } },
+      include: { player: true },
     });
 
-    if (!player) {
-      return res.status(404).json({ error: 'Player not found' });
-    }
+    await prisma.inboxMessage.create({
+      data: {
+        userId: playerId,
+        title: 'Balance Summary',
+        body: customMessage || `Total buy-in: ${balance?.totalBuyIn || 0} pts | Total cash-out: ${balance?.totalCashOut || 0} pts | Balance: ${balance?.balance || 0} pts`,
+      }
+    });
 
-    if (!player.phone) {
-      return res.status(400).json({ error: 'Player has no phone number' });
-    }
-
-    if (player.notificationsEnabled === false) {
-      return res.status(400).json({ error: 'Player has disabled notifications' });
-    }
-
-    // Send WhatsApp message
-    const message = balance < 0
-      ? `💰 Payment Reminder\n\nHi ${player.displayName},\n\nYour account summary:\n📊 Total Buy-in: ${Math.abs(totalBuyIn)} points\n💵 Total Cash-out: ${totalCashOut} points\n⚠️ Balance Due: ${Math.abs(balance)} points\n\nPlease settle your balance at your earliest convenience.\n\nRegards,\n${hostUser.displayName}`
-      : `✅ Account Summary\n\nHi ${player.displayName},\n\nYour account summary:\n📊 Total Buy-in: ${totalBuyIn} points\n💵 Total Cash-out: ${totalCashOut} points\n✨ Credit Balance: +${balance} points\n\nYour account is in good standing!\n\nRegards,\n${hostUser.displayName}`;
-
-    try {
-      const response = await axios.post(
-        `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-        {
-          messaging_product: 'whatsapp',
-          to: player.phone,
-          type: 'text',
-          text: { body: message }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      // Log notification
-      await prisma.notification.create({
-        data: {
-          userId: player.id,
-          type: 'REMINDER',
-          title: 'Payment Reminder',
-          message,
-          channel: 'WHATSAPP',
-          status: 'SENT',
-          sentAt: new Date()
-        }
-      });
-
-      res.json({
-        success: true,
-        message: 'Reminder sent successfully',
-        messageId: response.data.messages?.[0]?.id
-      });
-    } catch (whatsappError) {
-      console.error('WhatsApp API Error:', whatsappError.response?.data || whatsappError.message);
-      
-      // Log failed notification
-      await prisma.notification.create({
-        data: {
-          userId: player.id,
-          type: 'REMINDER',
-          title: 'Payment Reminder',
-          message,
-          channel: 'WHATSAPP',
-          status: 'FAILED',
-          error: whatsappError.response?.data?.error?.message || whatsappError.message
-        }
-      });
-
-      return res.status(500).json({
-        error: 'Failed to send WhatsApp message',
-        details: whatsappError.response?.data?.error?.message || whatsappError.message
-      });
-    }
-  } catch (error) {
-    next(error);
-  }
+    res.json({ message: 'Summary sent' });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

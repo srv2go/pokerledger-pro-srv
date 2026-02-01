@@ -1,301 +1,102 @@
-/**
- * API Service for PokerLedger Pro
- * Simplified flow: Host records all transactions, players get WhatsApp notifications
- */
-
-const API_BASE = 'https://pokerledger-backend.onrender.com/api';
-
-class ApiError extends Error {
-  constructor(message, status, data) {
-    super(message);
-    this.status = status;
-    this.data = data;
-    this.name = 'ApiError';
-  }
-}
-
+const API = '/api';
 const getToken = () => localStorage.getItem('token');
 
 const request = async (endpoint, options = {}) => {
   const token = getToken();
-  
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
+    headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }), ...options.headers },
     ...options,
   };
-
-  if (config.body && typeof config.body === 'object') {
+  if (config.body && typeof config.body === 'object' && !(config.body instanceof Blob)) {
     config.body = JSON.stringify(config.body);
   }
-
-  const response = await fetch(`${API_BASE}${endpoint}`, config);
-  
+  const res = await fetch(`${API}${endpoint}`, config);
+  if (endpoint.includes('/export/') && res.ok) return res; // blob response
   let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok) {
-    // Handle validation errors array
-    let errorMessage = data?.error || data?.message || 'Request failed';
-    if (data?.errors && Array.isArray(data.errors)) {
-      errorMessage = data.errors.map(e => e.msg || e.message).join(', ');
-    }
-    throw new ApiError(
-      errorMessage,
-      response.status,
-      data
-    );
-  }
-
+  try { data = await res.json(); } catch { data = null; }
+  if (!res.ok) throw new Error(data?.error || 'Request failed');
   return data;
 };
 
-// Auth API
 export const authApi = {
-  register: (userData) => request('/auth/register', {
-    method: 'POST',
-    body: userData,
-  }),
-
-  login: (credentials) => request('/auth/login', {
-    method: 'POST',
-    body: credentials,
-  }),
-
+  register: (d) => request('/auth/register', { method: 'POST', body: d }),
+  login: (d) => request('/auth/login', { method: 'POST', body: d }),
+  autoLogin: (rememberToken) => request('/auth/auto-login', { method: 'POST', body: { rememberToken } }),
+  verifyPin: (userId, pin) => request('/auth/verify-pin', { method: 'POST', body: { userId, pin } }),
+  setPin: (pin) => request('/auth/set-pin', { method: 'POST', body: { pin } }),
   getProfile: () => request('/auth/me'),
-
-  updateProfile: (data) => request('/auth/profile', {
-    method: 'PUT',
-    body: data,
-  }),
-
-  updateNotificationPreferences: (notificationsEnabled) => request('/auth/profile/notifications', {
-    method: 'PATCH',
-    body: { notificationsEnabled },
-  }),
-
-  refreshToken: () => request('/auth/refresh', {
-    method: 'POST',
-  }),
+  updateProfile: (d) => request('/auth/profile', { method: 'PUT', body: d }),
+  promote: (userId, role) => request('/auth/promote', { method: 'POST', body: { userId, role } }),
 };
 
-// Games API
 export const gamesApi = {
-  list: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/games${query ? `?${query}` : ''}`);
-  },
-
+  list: (params = {}) => { const q = new URLSearchParams(params).toString(); return request(`/games${q ? `?${q}` : ''}`); },
   get: (id) => request(`/games/${id}`),
-
-  create: (gameData) => request('/games', {
-    method: 'POST',
-    body: gameData,
-  }),
-
-  update: (id, gameData) => request(`/games/${id}`, {
-    method: 'PUT',
-    body: gameData,
-  }),
-
-  delete: (id) => request(`/games/${id}`, {
-    method: 'DELETE',
-  }),
-
-  start: (id) => request(`/games/${id}/start`, {
-    method: 'POST',
-  }),
-
-  pause: (id) => request(`/games/${id}/pause`, {
-    method: 'POST',
-  }),
-
-  resume: (id) => request(`/games/${id}/resume`, {
-    method: 'POST',
-  }),
-
-  end: (id) => request(`/games/${id}/end`, {
-    method: 'POST',
-  }),
-
-  invite: (id, playerIds, sendNotification = true) => request(`/games/${id}/invite`, {
-    method: 'POST',
-    body: { playerIds, sendNotification },
-  }),
-
-  exportExcel: (id) => {
-    const token = getToken();
-    const url = `${API_BASE}/games/${id}/export`;
-    
-    return fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    }).then(res => {
-      if (!res.ok) throw new Error('Export failed');
-      return res.blob();
-    }).then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `game_export_${id}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    });
-  },
-
-  updateExpenses: (id, expenses) => request(`/games/${id}`, {
-    method: 'PUT',
-    body: expenses,
-  }),
+  create: (d) => request('/games', { method: 'POST', body: d }),
+  update: (id, d) => request(`/games/${id}`, { method: 'PUT', body: d }),
+  delete: (id) => request(`/games/${id}`, { method: 'DELETE' }),
+  start: (id) => request(`/games/${id}/start`, { method: 'POST' }),
+  pause: (id) => request(`/games/${id}/pause`, { method: 'POST' }),
+  resume: (id) => request(`/games/${id}/resume`, { method: 'POST' }),
+  end: (id) => request(`/games/${id}/end`, { method: 'POST' }),
+  addFloat: (id, d) => request(`/games/${id}/float`, { method: 'POST', body: d }),
+  addExpense: (id, d) => request(`/games/${id}/expense`, { method: 'POST', body: d }),
+  tableCashout: (id, d) => request(`/games/${id}/table-cashout`, { method: 'POST', body: d }),
+  invite: (id, playerIds) => request(`/games/${id}/invite`, { method: 'POST', body: { playerIds } }),
 };
 
-// Players API
-export const playersApi = {
-  list: (search = '') => {
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    return request(`/players${query}`);
-  },
-
-  get: (id) => request(`/players/${id}`),
-
-  create: (playerData) => request('/players', {
-    method: 'POST',
-    body: playerData,
-  }),
-
-  update: (id, playerData) => request(`/players/${id}`, {
-    method: 'PUT',
-    body: playerData,
-  }),
-
-  history: (id, params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/players/${id}/history${query ? `?${query}` : ''}`);
-  },
-
-  sendReminder: (id, balanceData) => request(`/players/${id}/send-reminder`, {
-    method: 'POST',
-    body: balanceData,
-  }),
-};
-
-// Transactions API - Host records all, players get WhatsApp notifications
 export const transactionsApi = {
-  /**
-   * Record buy-in (initial or re-buy)
-   * @param {Object} data - { gameId, playerId, amount, paymentMethod?, sendNotification? }
-   */
-  buyIn: (data) => request('/transactions/buy-in', {
-    method: 'POST',
-    body: { sendNotification: true, ...data },
-  }),
-
-  /**
-   * Record top-up (adds chips to player's stack)
-   * @param {Object} data - { gameId, playerId, amount, paymentMethod?, sendNotification? }
-   */
-  topUp: (data) => request('/transactions/top-up', {
-    method: 'POST',
-    body: { sendNotification: true, ...data },
-  }),
-
-  /**
-   * Record cash-out
-   * @param {Object} data - { gameId, playerId, amount, sendNotification? }
-   */
-  cashOut: (data) => request('/transactions/cash-out', {
-    method: 'POST',
-    body: { sendNotification: true, ...data },
-  }),
-
-  /**
-   * Record balance adjustment
-   * @param {Object} data - { gameId, playerId, amount, reason }
-   */
-  adjustment: (data) => request('/transactions/adjustment', {
-    method: 'POST',
-    body: data,
-  }),
-
-  /**
-   * Get transactions for a game
-   */
-  getGameTransactions: (gameId, params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/transactions/game/${gameId}${query ? `?${query}` : ''}`);
-  },
-
-  /**
-   * Get transaction history for a player
-   */
-  getPlayerTransactions: (playerId, params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/transactions/player/${playerId}${query ? `?${query}` : ''}`);
-  },
-
-  bulkCashout: (data) => request('/transactions/bulk-cashout', {
-    method: 'POST',
-    body: data,
-  }),
+  buyIn: (d) => request('/transactions/buy-in', { method: 'POST', body: { sendNotification: true, ...d } }),
+  topUp: (d) => request('/transactions/top-up', { method: 'POST', body: { sendNotification: true, ...d } }),
+  cashOut: (d) => request('/transactions/cash-out', { method: 'POST', body: { sendNotification: true, ...d } }),
+  adjustment: (d) => request('/transactions/adjustment', { method: 'POST', body: d }),
+  editTransaction: (txId, d) => request(`/transactions/${txId}`, { method: 'PUT', body: d }),
+  getGameTx: (gameId) => request(`/transactions/game/${gameId}`),
+  getPlayerTx: (playerId) => request(`/transactions/player/${playerId}`),
 };
 
-// Notifications API
+export const playersApi = {
+  list: (search) => request(`/players${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  get: (id) => request(`/players/${id}`),
+  create: (d) => request('/players', { method: 'POST', body: d }),
+  update: (id, d) => request(`/players/${id}`, { method: 'PUT', body: d }),
+  history: (id) => request(`/players/${id}/history`),
+  rollingBalances: () => request('/players/balances/rolling'),
+  sendReminder: (playerId, msg) => request(`/players/reminder/${playerId}`, { method: 'POST', body: { message: msg } }),
+  sendSummary: (playerId, msg) => request(`/players/send-summary/${playerId}`, { method: 'POST', body: { message: msg } }),
+};
+
+export const statsApi = {
+  hostDashboard: () => request('/stats/host-dashboard'),
+  myStats: () => request('/stats/my-stats'),
+  gameHistory: () => request('/stats/game-history'),
+};
+
 export const notificationsApi = {
-  list: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/notifications${query ? `?${query}` : ''}`);
-  },
-
-  markRead: (id) => request(`/notifications/${id}/read`, {
-    method: 'PUT',
-  }),
-
-  markAllRead: () => request('/notifications/read-all', {
-    method: 'PUT',
-  }),
-
-  delete: (id) => request(`/notifications/${id}`, {
-    method: 'DELETE',
-  }),
-
+  getInbox: () => request('/notifications/inbox'),
+  markRead: (id) => request(`/notifications/inbox/${id}/read`, { method: 'PUT' }),
+  markAllRead: () => request('/notifications/inbox/read-all', { method: 'PUT' }),
+  toggleWhatsapp: (enabled) => request('/notifications/whatsapp-toggle', { method: 'PUT', body: { enabled } }),
   getPreferences: () => request('/notifications/preferences'),
-
-  updatePreferences: (preferences) => request('/notifications/preferences', {
-    method: 'PUT',
-    body: { preferences },
-  }),
 };
 
-// Messages API
-export const messagesApi = {
-  list: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return request(`/messages${query ? `?${query}` : ''}`);
+export const exportApi = {
+  downloadGame: async (gameId) => {
+    const res = await request(`/export/game/${gameId}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `game_export_${gameId.slice(0, 8)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
-
-  send: (messageData) => request('/messages', {
-    method: 'POST',
-    body: messageData,
-  }),
-
-  markRead: (id) => request(`/messages/${id}/read`, {
-    method: 'PATCH',
-  }),
-
-  delete: (id) => request(`/messages/${id}`, {
-    method: 'DELETE',
-  }),
 };
 
-export { ApiError };
-export default { authApi, gamesApi, playersApi, transactionsApi, notificationsApi, messagesApi };
+// Points formatter — no currency symbols
+export const fmtPts = (amount, showSign = false) => {
+  const n = parseFloat(amount) || 0;
+  const abs = Math.abs(n);
+  if (showSign && n !== 0) return `${n > 0 ? '+' : '-'}${abs} pts`;
+  return `${n < 0 ? '-' : ''}${abs} pts`;
+};
