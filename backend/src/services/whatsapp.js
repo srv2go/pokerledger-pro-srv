@@ -190,6 +190,7 @@ const notifyCashOut = async (player, game, cashOutAmount, totalInvested) => {
   }
 
   const debited = Math.floor(cashOutAmount);
+  const profit = cashOutAmount - totalInvested;
   const balance = Math.floor(profit);
   const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   

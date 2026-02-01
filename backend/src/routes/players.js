@@ -320,6 +320,7 @@ router.post('/:id/send-reminder', [
         data: {
           userId: player.id,
           type: 'REMINDER',
+          title: 'Payment Reminder',
           message,
           channel: 'WHATSAPP',
           status: 'SENT',
@@ -340,6 +341,7 @@ router.post('/:id/send-reminder', [
         data: {
           userId: player.id,
           type: 'REMINDER',
+          title: 'Payment Reminder',
           message,
           channel: 'WHATSAPP',
           status: 'FAILED',

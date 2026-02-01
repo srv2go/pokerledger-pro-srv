@@ -35,6 +35,7 @@ export default function GameDetail() {
   const [showBuyInModal, setShowBuyInModal] = useState(false);
   const [showCashOutModal, setShowCashOutModal] = useState(false);
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
+  const [showEndGameModal, setShowEndGameModal] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -87,17 +88,8 @@ export default function GameDetail() {
   };
 
   const handleEndGame = async () => {
-    if (!confirm('Are you sure you want to end this game?')) return;
-    try {
-      setActionLoading(true);
-      await gamesApi.end(id);
-      success('Game ended');
-      refresh();
-    } catch (err) {
-      showError(err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    // Show bulk cashout modal instead of immediately ending the game
+    setShowEndGameModal(true);
   };
 
   const handleBuyIn = (player) => {
@@ -260,7 +252,7 @@ export default function GameDetail() {
             </div>
             {game.location && (
               <div className="flex justify-between">
-             canSeeRake &&    <span className="text-gray-400">Location</span>
+                <span className="text-gray-400">Location</span>
                 <span className="text-white">{game.location}</span>
               </div>
             )}
@@ -326,10 +318,24 @@ export default function GameDetail() {
         onClose={() => setShowAddPlayerModal(false)}
         gameId={id}
         existingPlayerIds={players
-          .filter(p => p.status === 'ACTIVE' || p.status === 'INVITED')
+          .filter(p => p.status === 'ACTIVE' || p.status === 'INVITED' || p.status === 'CASHED_OUT' || p.status === 'ELIMINATED')
           .map(p => p.playerId)
         }
         defaultBuyIn={game.buyInAmount}
+        onSuccess={(message) => {
+          refresh();
+          success(message);
+        }}
+        onError={showError}
+      />
+
+      {/* End Game Modal */}
+      <EndGameModal
+        isOpen={showEndGameModal}
+        onClose={() => setShowEndGameModal(false)}
+        gameId={id}
+        players={players}
+        game={game}
         onSuccess={(message) => {
           refresh();
           success(message);
@@ -730,6 +736,194 @@ function AddPlayerModal({ isOpen, onClose, gameId, existingPlayerIds, defaultBuy
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// End Game Bulk Cashout Modal
+function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onError }) {
+  const [cashouts, setCashouts] = useState([]);
+  const [foodExpense, setFoodExpense] = useState('0');
+  const [rentExpense, setRentExpense] = useState('0');
+  const [dealerExpense, setDealerExpense] = useState('0');
+  const [miscExpense, setMiscExpense] = useState('0');
+  const [sendNotifications, setSendNotifications] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // Initialize cashouts when modal opens
+  React.useEffect(() => {
+    if (isOpen && players.length > 0) {
+      const activePlayers = players.filter(p => ['ACTIVE', 'INVITED', 'CONFIRMED'].includes(p.status));
+      setCashouts(activePlayers.map(p => ({
+        playerId: p.playerId || p.player?.id,
+        amount: '0',
+        player: p.player || { displayName: p.displayName || 'Unknown', id: p.playerId }
+      })));
+    }
+  }, [isOpen, players]);
+
+  const handleCashoutChange = (index, amount) => {
+    const newCashouts = [...cashouts];
+    newCashouts[index].amount = amount;
+    setCashouts(newCashouts);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      // Prepare cashout data with amounts
+      const cashoutData = cashouts
+        .filter(c => parseFloat(c.amount) > 0)
+        .map(c => ({
+          playerId: c.playerId,
+          amount: parseFloat(c.amount)
+        }));
+
+      if (cashoutData.length === 0) {
+        onError('Please enter cashout amounts for at least one player');
+        setLoading(false);
+        return;
+      }
+
+      await transactionsApi.bulkCashout({
+        gameId,
+        cashouts: cashoutData,
+        foodExpense: parseFloat(foodExpense) || 0,
+        rentExpense: parseFloat(rentExpense) || 0,
+        dealerExpense: parseFloat(dealerExpense) || 0,
+        miscExpense: parseFloat(miscExpense) || 0,
+        sendNotifications
+      });
+
+      onSuccess('Game ended and all players cashed out with expenses deducted');
+      onClose();
+      setCashouts([]);
+      setFoodExpense('0');
+      setRentExpense('0');
+      setDealerExpense('0');
+      setMiscExpense('0');
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalCashout = cashouts.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+  const totalExpenses = (parseFloat(foodExpense) || 0) + (parseFloat(rentExpense) || 0) + 
+                       (parseFloat(dealerExpense) || 0) + (parseFloat(miscExpense) || 0);
+  const totalPot = totalCashout + totalExpenses;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="End Game & Settle" size="lg">
+      <form onSubmit={handleSubmit} className="p-4 space-y-4 max-h-96 overflow-y-auto">
+        {/* Game Summary */}
+        <div className="grid grid-cols-3 gap-2 p-3 bg-gray-800 rounded-lg">
+          <div>
+            <p className="text-xs text-gray-400">Total Pot</p>
+            <p className="text-lg font-bold text-white">{Math.floor(totalPot)} points</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Cashouts</p>
+            <p className="text-lg font-bold text-felt-400">{Math.floor(totalCashout)} points</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Expenses</p>
+            <p className="text-lg font-bold text-red-400">{Math.floor(totalExpenses)} points</p>
+          </div>
+        </div>
+
+        {/* Player Cashouts */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-300">Player Cashouts</label>
+          <div className="space-y-2">
+            {cashouts.map((cashout, idx) => (
+              <div key={idx} className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg">
+                <Avatar name={cashout.player?.displayName} size="sm" />
+                <span className="flex-1 text-sm text-white font-medium">{cashout.player?.displayName}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={cashout.amount}
+                  onChange={(e) => handleCashoutChange(idx, e.target.value)}
+                  placeholder="0"
+                  className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-right"
+                />
+                <span className="text-xs text-gray-400 w-8">pts</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Expenses */}
+        <div className="space-y-2 p-3 bg-gray-800/50 rounded-lg">
+          <label className="block text-sm font-medium text-gray-300">Game Expenses</label>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Food"
+              type="number"
+              min="0"
+              step="10"
+              value={foodExpense}
+              onChange={(e) => setFoodExpense(e.target.value)}
+              placeholder="0"
+            />
+            <Input
+              label="Rent/Venue"
+              type="number"
+              min="0"
+              step="10"
+              value={rentExpense}
+              onChange={(e) => setRentExpense(e.target.value)}
+              placeholder="0"
+            />
+            <Input
+              label="Dealer"
+              type="number"
+              min="0"
+              step="10"
+              value={dealerExpense}
+              onChange={(e) => setDealerExpense(e.target.value)}
+              placeholder="0"
+            />
+            <Input
+              label="Misc"
+              type="number"
+              min="0"
+              step="10"
+              value={miscExpense}
+              onChange={(e) => setMiscExpense(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+        </div>
+
+        {/* Notification Toggle */}
+        <label className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg cursor-pointer">
+          <input
+            type="checkbox"
+            checked={sendNotifications}
+            onChange={(e) => setSendNotifications(e.target.checked)}
+            className="w-5 h-5 rounded border-gray-600 text-felt-500 focus:ring-felt-500"
+          />
+          <div>
+            <p className="text-white font-medium">Send WhatsApp summaries</p>
+            <p className="text-xs text-gray-400">Players receive their settlement info</p>
+          </div>
+        </label>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+            Cancel
+          </Button>
+          <Button type="submit" loading={loading} className="flex-1">
+            End Game & Settle
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 }
