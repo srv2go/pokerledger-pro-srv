@@ -75,7 +75,7 @@ model Game {
   host            User           @relation("GameHost", fields: [hostId], references: [id])
   players         GamePlayer[]
   transactions    Transaction[]
-  floats          Float[]
+  floats          FloatRecord[]
   expenses        Expense[]
 
   @@map("games")
@@ -179,7 +179,7 @@ enum PaymentStatus {
 }
 
 // ─── FLOAT (host buffer/escrow chips with dealer) ───────
-model Float {
+model FloatRecord {
   id        String   @id @default(uuid())
   gameId    String
   amount    Decimal  @db.Decimal(10,2)

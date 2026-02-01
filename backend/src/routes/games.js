@@ -185,7 +185,7 @@ router.post('/:id/float', requireMinRole('HOST'), [
 ], async (req, res, next) => {
   try {
     const { amount, notes } = req.body;
-    const float = await prisma.float.create({
+    const float = await prisma.floatRecord.create({
       data: { gameId: req.params.id, amount, notes }
     });
     broadcastGameUpdate(req.params.id, { newFloat: float });
