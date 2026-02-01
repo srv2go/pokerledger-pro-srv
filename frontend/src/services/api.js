@@ -271,6 +271,11 @@ export const notificationsApi = {
   getPreferences: () => request('/notifications/preferences'),
 
   updatePreferences: (preferences) => request('/notifications/preferences', {
+    method: 'PUT',
+    body: { preferences },
+  }),
+};
+
 // Messages API
 export const messagesApi = {
   list: (params = {}) => {
@@ -293,9 +298,4 @@ export const messagesApi = {
 };
 
 export { ApiError };
-export default { authApi, gamesApi, playersApi, transactionsApi, notificationsApi, message
-  }),
-};
-
-export { ApiError };
-export default { authApi, gamesApi, playersApi, transactionsApi, notificationsApi };
+export default { authApi, gamesApi, playersApi, transactionsApi, notificationsApi, messagesApi };

@@ -232,6 +232,22 @@ export default function Profile() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-400">Account Type</span>
+              <span className="text-white font-medium capitalize">
+                {user.role?.toLowerCase()}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Member Since</span>
+              <span className="text-white">
+                {new Date(user.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Verified</span>
+              <span className={user.isVerified ? "text-green-400" : "text-yellow-400"}>
+                {user.isVerified ? 'Yes' : 'Pending'}
+              </span>
+            </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Subscription</span>
               <span className="text-white font-medium capitalize">
@@ -273,22 +289,6 @@ export default function Profile() {
                 ⚠️ Add a phone number to receive notifications
               </p>
             )}
-              <span className="text-white font-medium capitalize">
-                {user.role?.toLowerCase()}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Member Since</span>
-              <span className="text-white">
-                {new Date(user.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Verified</span>
-              <span className={user.isVerified ? "text-green-400" : "text-yellow-400"}>
-                {user.isVerified ? 'Yes' : 'Pending'}
-              </span>
-            </div>
           </div>
         </Card>
 
