@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGame, formatCurrency, useToast } from '../hooks';
 import { gamesApi, transactionsApi, playersApi } from '../services/api';
@@ -36,6 +36,7 @@ export default function GameDetail() {
   const [showCashOutModal, setShowCashOutModal] = useState(false);
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
   const [showEndGameModal, setShowEndGameModal] = useState(false);
+  const [showFloatModal, setShowFloatModal] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -142,6 +143,39 @@ export default function GameDetail() {
             icon={TrendingUp}
           />
         </div>
+
+        {/* Float & Settlement Summary (Host only) */}
+        {isHost && (
+          <Card className="p-4 bg-felt-900/30 border-felt-800">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-400">Float</p>
+                <p className="text-lg font-bold text-white">{formatCurrency(game.floatAmount || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Expenses</p>
+                <p className="text-lg font-bold text-red-400">
+                  {formatCurrency((game.foodExpense || 0) + (game.rentExpense || 0) + (game.dealerExpense || 0) + (game.miscExpense || 0))}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Expected Rake</p>
+                <p className="text-lg font-bold text-felt-400">
+                  {formatCurrency(((stats?.totalPot || 0) * (game.rakePercentage || 0)) / 100)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Rake %</p>
+                <p className="text-lg font-bold text-white">{game.rakePercentage || 0}%</p>
+              </div>
+            </div>
+            <div className="pt-3">
+              <Button variant="secondary" onClick={() => setShowFloatModal(true)} className="w-full">
+                <DollarSign className="w-4 h-4" /> Manage Float & Expenses
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Game Controls (Host only) */}
         {isHost && (
@@ -336,6 +370,26 @@ export default function GameDetail() {
         gameId={id}
         players={players}
         game={game}
+        stats={stats}
+        onSuccess={(message) => {
+          refresh();
+          success(message);
+        }}
+        onError={showError}
+      />
+
+      {/* Float & Expenses Modal */}
+      <FloatModal
+        isOpen={showFloatModal}
+        onClose={() => setShowFloatModal(false)}
+        gameId={id}
+        currentFloat={game.floatAmount}
+        expenses={{
+          foodExpense: game.foodExpense,
+          rentExpense: game.rentExpense,
+          dealerExpense: game.dealerExpense,
+          miscExpense: game.miscExpense
+        }}
         onSuccess={(message) => {
           refresh();
           success(message);
@@ -741,7 +795,7 @@ function AddPlayerModal({ isOpen, onClose, gameId, existingPlayerIds, defaultBuy
 }
 
 // End Game Bulk Cashout Modal
-function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onError }) {
+function EndGameModal({ isOpen, onClose, gameId, players, game, stats, onSuccess, onError }) {
   const [cashouts, setCashouts] = useState([]);
   const [foodExpense, setFoodExpense] = useState('0');
   const [rentExpense, setRentExpense] = useState('0');
@@ -751,7 +805,7 @@ function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onErr
   const [loading, setLoading] = useState(false);
 
   // Initialize cashouts when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen && players.length > 0) {
       const activePlayers = players.filter(p => ['ACTIVE', 'INVITED', 'CONFIRMED'].includes(p.status));
       setCashouts(activePlayers.map(p => ({
@@ -813,7 +867,10 @@ function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onErr
   const totalCashout = cashouts.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
   const totalExpenses = (parseFloat(foodExpense) || 0) + (parseFloat(rentExpense) || 0) + 
                        (parseFloat(dealerExpense) || 0) + (parseFloat(miscExpense) || 0);
-  const totalPot = totalCashout + totalExpenses;
+  const declaredPot = totalCashout + totalExpenses;
+  const expectedPot = parseFloat(stats?.totalPot || 0);
+  const expectedRake = (expectedPot * (parseFloat(game?.rakePercentage || 0) / 100));
+  const actualRake = expectedPot - totalCashout - totalExpenses;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="End Game & Settle" size="lg">
@@ -822,7 +879,7 @@ function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onErr
         <div className="grid grid-cols-3 gap-2 p-3 bg-gray-800 rounded-lg">
           <div>
             <p className="text-xs text-gray-400">Total Pot</p>
-            <p className="text-lg font-bold text-white">{Math.floor(totalPot)} points</p>
+            <p className="text-lg font-bold text-white">{Math.floor(declaredPot)} points</p>
           </div>
           <div>
             <p className="text-xs text-gray-400">Cashouts</p>
@@ -831,6 +888,30 @@ function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onErr
           <div>
             <p className="text-xs text-gray-400">Expenses</p>
             <p className="text-lg font-bold text-red-400">{Math.floor(totalExpenses)} points</p>
+          </div>
+        </div>
+
+        {/* Rake & Settlement Summary */}
+        <div className="grid grid-cols-2 gap-2 p-3 bg-gray-800/50 rounded-lg">
+          <div>
+            <p className="text-xs text-gray-400">Expected Pot</p>
+            <p className="text-lg font-bold text-white">{Math.floor(expectedPot)} points</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Expected Rake</p>
+            <p className="text-lg font-bold text-felt-400">{Math.floor(expectedRake)} points</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Actual Rake</p>
+            <p className={`text-lg font-bold ${actualRake >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {Math.floor(actualRake)} points
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Variance</p>
+            <p className={`text-lg font-bold ${actualRake >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {Math.floor(actualRake - expectedRake)} points
+            </p>
           </div>
         </div>
 
@@ -921,6 +1002,111 @@ function EndGameModal({ isOpen, onClose, gameId, players, game, onSuccess, onErr
           </Button>
           <Button type="submit" loading={loading} className="flex-1">
             End Game & Settle
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Float Management Modal
+function FloatModal({ isOpen, onClose, gameId, currentFloat, expenses, onSuccess, onError }) {
+  const [float, setFloat] = useState(currentFloat?.toString() || '0');
+  const [foodExpense, setFoodExpense] = useState(expenses?.foodExpense?.toString() || '0');
+  const [rentExpense, setRentExpense] = useState(expenses?.rentExpense?.toString() || '0');
+  const [dealerExpense, setDealerExpense] = useState(expenses?.dealerExpense?.toString() || '0');
+  const [miscExpense, setMiscExpense] = useState(expenses?.miscExpense?.toString() || '0');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await gamesApi.updateExpenses(gameId, {
+        floatAmount: parseFloat(float) || 0,
+        foodExpense: parseFloat(foodExpense) || 0,
+        rentExpense: parseFloat(rentExpense) || 0,
+        dealerExpense: parseFloat(dealerExpense) || 0,
+        miscExpense: parseFloat(miscExpense) || 0,
+      });
+      onSuccess('Float and expenses updated');
+      onClose();
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalExpenses = (parseFloat(foodExpense) || 0) + (parseFloat(rentExpense) || 0) +
+    (parseFloat(dealerExpense) || 0) + (parseFloat(miscExpense) || 0);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Manage Float & Expenses">
+      <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <Input
+          label="Float Amount"
+          type="number"
+          min="0"
+          step="10"
+          value={float}
+          onChange={(e) => setFloat(e.target.value)}
+          placeholder="0"
+        />
+
+        <div className="space-y-2 p-3 bg-gray-800/50 rounded-lg">
+          <label className="block text-sm font-medium text-gray-300">Game Expenses</label>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Food"
+              type="number"
+              min="0"
+              step="10"
+              value={foodExpense}
+              onChange={(e) => setFoodExpense(e.target.value)}
+              placeholder="0"
+            />
+            <Input
+              label="Rent/Venue"
+              type="number"
+              min="0"
+              step="10"
+              value={rentExpense}
+              onChange={(e) => setRentExpense(e.target.value)}
+              placeholder="0"
+            />
+            <Input
+              label="Dealer"
+              type="number"
+              min="0"
+              step="10"
+              value={dealerExpense}
+              onChange={(e) => setDealerExpense(e.target.value)}
+              placeholder="0"
+            />
+            <Input
+              label="Misc"
+              type="number"
+              min="0"
+              step="10"
+              value={miscExpense}
+              onChange={(e) => setMiscExpense(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+        </div>
+
+        <Card className="p-3 bg-red-500/10 border-red-500/20">
+          <p className="text-xs text-gray-400">Total Expenses</p>
+          <p className="text-lg font-bold text-red-400">{Math.floor(totalExpenses)} points</p>
+        </Card>
+
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+            Cancel
+          </Button>
+          <Button type="submit" loading={loading} className="flex-1">
+            Save
           </Button>
         </div>
       </form>

@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { playersApi, gamesApi } from '../services/api';
+import { useToast } from '../hooks';
+import { formatPoints } from '../utils/currency';
 import { 
-  Card, Button, LoadingScreen, EmptyState, Badge, Avatar 
+  Card, Button, LoadingScreen, EmptyState, Badge, Avatar, ToastContainer
 } from '../components/ui';
 import { 
   ArrowLeft, TrendingUp, TrendingDown, Send, DollarSign, Users 
@@ -12,6 +14,7 @@ import {
 export default function Stats() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toasts, success, error: showError, removeToast } = useToast();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState({});
@@ -85,6 +88,11 @@ export default function Stats() {
   const sendReminder = async (player) => {
     try {
       setSending(prev => ({ ...prev, [player.id]: true }));
+
+      if (player.balance === 0) {
+        showError('No balance due for this player');
+        return;
+      }
       
       await playersApi.sendReminder(player.id, {
         balance: player.balance,
@@ -92,9 +100,9 @@ export default function Stats() {
         totalCashOut: player.totalCashOut
       });
       
-      alert(`Reminder sent to ${player.displayName} via WhatsApp!`);
+      success(`Reminder sent to ${player.displayName}`);
     } catch (err) {
-      alert(`Failed to send reminder: ${err.message}`);
+      showError(`Failed to send reminder: ${err.message}`);
     } finally {
       setSending(prev => ({ ...prev, [player.id]: false }));
     }
@@ -242,6 +250,8 @@ export default function Stats() {
             </div>
           </div>
         </Card>
+
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
       </div>
     </div>
   );

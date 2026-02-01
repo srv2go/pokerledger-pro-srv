@@ -75,7 +75,7 @@ export default function Profile() {
   const toggleNotifications = async () => {
     setNotificationsLoading(true);
     try {
-      const newValue = !user.notificationsEnabled;
+      const newValue = !Boolean(user?.notificationsEnabled);
       const updated = await authApi.updateNotificationPreferences(newValue);
       updateUser(updated.user);
       setSuccess(newValue ? 'Notifications enabled' : 'Notifications disabled');

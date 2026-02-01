@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { gamesApi, playersApi } from '../services/api';
+import { gamesApi, playersApi, transactionsApi } from '../services/api';
 import { Card, Button, Input, Select, Modal, Avatar } from '../components/ui';
 import { 
   ArrowLeft, Calendar, MapPin, DollarSign, Users,
@@ -76,6 +76,19 @@ export default function CreateGame() {
       console.log('Creating game with data:', gameData);
       const { game } = await gamesApi.create(gameData);
       console.log('Game created successfully:', game);
+
+      // Record initial buy-ins for selected players
+      if (selectedPlayers.length > 0 && formData.buyInAmount) {
+        await Promise.allSettled(
+          selectedPlayers.map(player => transactionsApi.buyIn({
+            gameId: game.id,
+            playerId: player.id,
+            amount: parseFloat(formData.buyInAmount),
+            sendNotification: true,
+          }))
+        );
+      }
+
       navigate(`/games/${game.id}`);
     } catch (err) {
       console.error('Game creation error:', err);
