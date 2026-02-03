@@ -192,4 +192,29 @@ router.get('/debug/users', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── BOOTSTRAP: Make a user SUPER_ADMIN (only if no super admins exist) ──
+router.post('/bootstrap-admin', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    
+    // Check if any super admins exist
+    const superAdminCount = await prisma.user.count({ where: { role: 'SUPER_ADMIN' } });
+    if (superAdminCount > 0) {
+      return res.status(403).json({ error: 'Super admin already exists. Use /promote endpoint instead.' });
+    }
+    
+    // Find user by email and promote to SUPER_ADMIN
+    const user = await prisma.user.update({
+      where: { email },
+      data: { role: 'SUPER_ADMIN' },
+      select: { id: true, email: true, displayName: true, role: true }
+    });
+    
+    res.json({ success: true, message: `${user.displayName} is now SUPER_ADMIN`, user });
+  } catch (err) { 
+    if (err.code === 'P2025') return res.status(404).json({ error: 'User not found' });
+    next(err); 
+  }
+});
+
 module.exports = router;
