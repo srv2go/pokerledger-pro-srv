@@ -18,7 +18,7 @@ router.get('/host-dashboard', requireMinRole('HOST'), async (req, res, next) => 
           include: { player: { select: { id: true, displayName: true, phone: true, email: true } } }
         },
         expenses: true,
-        floats: true,
+        gameFloats: true,
       },
       orderBy: { startTime: 'desc' },
     });
@@ -78,7 +78,7 @@ router.get('/host-dashboard', requireMinRole('HOST'), async (req, res, next) => 
     const gameSummaries = games.map(g => {
       const totalBuyIn = g.players.reduce((s, p) => s + parseFloat(p.totalInvested || 0), 0);
       const totalCashOut = g.players.reduce((s, p) => s + parseFloat(p.cashOut || 0), 0);
-      const totalFloat = g.floats.reduce((s, f) => s + parseFloat(f.amount), 0);
+      const totalFloat = g.gameFloats.reduce((s, f) => s + parseFloat(f.amount), 0);
       const totalExpenses = g.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
 
       return {

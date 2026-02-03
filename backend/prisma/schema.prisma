@@ -75,7 +75,7 @@ model Game {
   host            User           @relation("GameHost", fields: [hostId], references: [id])
   players         GamePlayer[]
   transactions    Transaction[]
-  floats          FloatRecord[]
+  gameFloats      GameFloat[]
   expenses        Expense[]
 
   @@map("games")
@@ -178,8 +178,8 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// ─── FLOAT (host buffer/escrow chips with dealer) ───────
-model FloatRecord {
+// ─── GAME FLOAT (host buffer/escrow chips with dealer) ──
+model GameFloat {
   id        String   @id @default(uuid())
   gameId    String
   amount    Decimal  @db.Decimal(10,2)
@@ -188,7 +188,7 @@ model FloatRecord {
 
   game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  @@map("floats")
+  @@map("game_floats")
 }
 
 // ─── EXPENSES (food, rent, dealer, misc) ────────────────
@@ -255,16 +255,12 @@ enum NotificationType {
   BUY_IN
   RE_BUY
   TOP_UP
-  TOP_UP_REQUEST
-  TOP_UP_APPROVED
-  TOP_UP_REJECTED
   CASH_OUT
   GAME_STARTING
   GAME_ENDED
   BALANCE_REMINDER
   GAME_SUMMARY
   SETTLEMENT_REMINDER
-  REMINDER
 }
 
 enum NotificationChannel {

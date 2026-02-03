@@ -10,9 +10,6 @@ const { initWebSocket } = require('./services/websocket');
 const app = express();
 const server = http.createServer(app);
 
-// Trust proxy for Render/Heroku (required for rate limiting behind reverse proxy)
-app.set('trust proxy', 1);
-
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));

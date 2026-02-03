@@ -21,7 +21,7 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
           include: { player: { select: { displayName: true } } },
           orderBy: { createdAt: 'asc' },
         },
-        floats: { orderBy: { createdAt: 'asc' } },
+        gameFloats: { orderBy: { createdAt: 'asc' } },
         expenses: { orderBy: { createdAt: 'asc' } },
       }
     });
@@ -53,7 +53,7 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
     if (canSeeRake(req.user)) {
       const totalBuyIn = game.players.reduce((s, p) => s + parseFloat(p.totalInvested || 0), 0);
       const totalCashOut = game.players.reduce((s, p) => s + parseFloat(p.cashOut || 0), 0);
-      const totalFloat = game.floats.reduce((s, f) => s + parseFloat(f.amount), 0);
+      const totalFloat = game.gameFloats.reduce((s, f) => s + parseFloat(f.amount), 0);
       const totalExpenses = game.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
 
       summary.addRows([
@@ -125,7 +125,7 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
     txSheet.getRow(1).font = { bold: true };
 
     // ── Sheet 4: Float & Expenses (host only) ──
-    if (canSeeRake(req.user) && (game.floats.length > 0 || game.expenses.length > 0)) {
+    if (canSeeRake(req.user) && (game.gameFloats.length > 0 || game.expenses.length > 0)) {
       const feSheet = workbook.addWorksheet('Float & Expenses');
       feSheet.columns = [
         { header: 'Type', key: 'type', width: 15 },
@@ -135,7 +135,7 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
         { header: 'Time', key: 'time', width: 22 },
       ];
 
-      for (const f of game.floats) {
+      for (const f of game.gameFloats) {
         feSheet.addRow({ type: 'FLOAT', category: '-', amount: parseFloat(f.amount), notes: f.notes || '', time: f.createdAt.toISOString() });
       }
       for (const e of game.expenses) {

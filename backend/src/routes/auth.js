@@ -142,7 +142,7 @@ router.put('/profile', authenticate, async (req, res, next) => {
         ...(whatsappEnabled !== undefined && { whatsappEnabled }),
         ...(preferences && { preferences }),
       },
-      select: { id: true, email: true, displayName: true, phone: true, role: true, whatsappEnabled: true }
+      select: { id: true, email: true, displayName: true, phone: true, role: true, subscription: true, whatsappEnabled: true }
     });
     res.json({ user });
   } catch (err) { next(err); }

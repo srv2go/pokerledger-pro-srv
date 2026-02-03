@@ -1,145 +1,265 @@
 # PokerLedger Pro v3.0
 
-Mobile-first web app for managing private poker games — designed for high-trust, close-knit groups.
+A mobile-first web application for managing private poker games with complete financial tracking, player management, and real-time updates.
 
-## What's New in v3
+## Features
+
+### Core Features
+- **Game Management**: Create, start, pause, resume, and end games
+- **Player Tracking**: Buy-ins, top-ups, cash-outs with session tracking
+- **Points System**: Currency-free point tracking (no $ symbols)
+- **Real-time Updates**: WebSocket-powered live dashboard
+- **Excel Export**: Download game summaries after completion
 
 ### Role-Based Access
-| Role | Permissions | Limit |
-|------|-------------|-------|
-| **Super Admin** | Full system access, promote admins | Max 3 |
-| **Admin** | Manage hosts, view all data, host games | Unlimited |
-| **Host** | Create tables, manage players, record transactions | Unlimited |
-| **Player** | View own game history & stats only | Read-only |
+| Role | Permissions |
+|------|-------------|
+| **SUPER_ADMIN** | Full access, manage admins (max 3) |
+| **ADMIN** | Manage hosts, view all games |
+| **HOST** | Create/manage games, see rake |
+| **PLAYER** | Join games, view personal stats |
 
-### Session Persistence
-- **Remember Me** — auto-login on app reopen (90-day token)
-- **PIN unlock** — optional 4-6 digit quick unlock
-- **Android back button** — navigates to previous screen, doesn't close app
+### Financial Tracking
+- **Rolling Balances**: Cross-game player balances per host
+- **Float Tracking**: Dealer escrow/buffer chips
+- **Expenses**: Food, Rent, Dealer, Misc categories
+- **Rake Tally**: `(Float + Buy-ins) - Cash-outs - Expenses = Rake`
+- **Settlement Reminders**: WhatsApp + in-app notifications
 
-### Points System (Currency-Free)
-All amounts display as **points** (e.g., "300 pts" not "$300") — works for any geo-location.
+### Session Management
+- **Remember Me**: 90-day auto-login tokens
+- **PIN Unlock**: Quick 4-6 digit PIN access
+- **Player Rejoin**: Return after cash-out (session tracking)
 
-### Subscription Model (Future)
-- **Free**: View last 3 games only
-- **Premium**: Full history, extended inbox
+### Cash-out Options
+1. **Individual**: Per-player button with flexible amounts
+2. **Table**: All active players + expenses at once
+3. **Close**: End game and update rolling balances
 
-### Game Features
-- **Player Rejoin** — cashed-out players can rejoin same game (session tracking, no duplicates)
-- **Individual Cash-out** — settle one player while game continues
-- **Table Cash-out** — settle all remaining players at once, with expense fields
-- **Close Table** — end game with full tally
-- **Float** — host buffer/escrow chips with dealer, tracked in rake formula
-- **Expenses** — food, rent, dealer, misc — deducted in tally
-- **Rake Formula**: `(Float + Player Buy-ins) - Cash-outs - Expenses = Rake`
-- **Flexible Cash-out** — player can cash out any amount (including 0 if they owe host)
-- **Excel Export** — download complete game data after closing
-
-### Rolling Balance & Settlement
-- Cross-game running balance per player-host pair
-- Send settlement reminders via WhatsApp or in-app
-- Host can send balance summaries outside games
-
-### WhatsApp Integration (Simplified)
-Plain notifications — no game details exposed:
-- Buy-in: `"100 points credited at 8:30 PM"`
-- Cash-out: `"Debited 300 points, balance 450 points. Net: +150 points"`
-- Toggle WhatsApp on/off per player for privacy
-
-### In-App Inbox
-- Premium users see last 6+ games of messages
-- Settlement reminders, balance updates, game summaries
-
-### Rake Privacy
-- Only Super Admin, Admin, and Host see rake percentage
-- Players never see rake data
+### Notifications
+- **WhatsApp**: Simple point-based messages (no game details)
+- **In-App Inbox**: Premium messaging system
+- **Privacy Toggle**: Per-player WhatsApp preferences
 
 ## Quick Start
 
-```bash
-# 1. Backend
-cd backend
-cp .env.example .env  # Edit with your DB credentials
-npm install
-npx prisma migrate dev --name init
-npm run dev
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 14+
+- npm or yarn
 
-# 2. Frontend (separate terminal)
-cd frontend
+### Backend Setup
+
+```bash
+cd backend
+
+# Install dependencies
 npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your DATABASE_URL and secrets
+
+# Initialize database
+npx prisma db push
+npx prisma generate
+
+# Start server
 npm run dev
 ```
 
-Backend: http://localhost:3001
-Frontend: http://localhost:3000
+### Frontend Setup
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
+```
+
+### Environment Variables
+
+**Backend `.env`:**
+```
+DATABASE_URL="postgresql://user:password@localhost:5432/pokerledger"
+JWT_SECRET="your-secret-key"
+PORT=3001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3000
+
+# Optional: WhatsApp Cloud API
+WHATSAPP_TOKEN=your-token
+WHATSAPP_PHONE_ID=your-phone-id
+WHATSAPP_VERIFY_TOKEN=your-verify-token
+```
 
 ## API Reference
 
-### Auth
+### Authentication
 ```
-POST /api/auth/register        - Register (choose HOST or PLAYER role)
-POST /api/auth/login           - Login with Remember Me
-POST /api/auth/auto-login      - Auto-login with remember token
-POST /api/auth/verify-pin      - Quick unlock with PIN
-POST /api/auth/set-pin         - Set/change PIN
-GET  /api/auth/me              - Get profile
-PUT  /api/auth/profile         - Update profile
-POST /api/auth/promote         - Promote user role (admin+)
+POST /api/auth/register     - Register (role: PLAYER or HOST)
+POST /api/auth/login        - Login (rememberMe option)
+POST /api/auth/auto-login   - Auto-login with remember token
+POST /api/auth/verify-pin   - PIN verification
+POST /api/auth/set-pin      - Set/update PIN
+GET  /api/auth/me           - Get profile
+PUT  /api/auth/profile      - Update profile
+POST /api/auth/promote      - Promote user (admin only)
 ```
 
 ### Games
 ```
-GET    /api/games              - List games (role-filtered)
-GET    /api/games/:id          - Game detail with stats & tally
-POST   /api/games              - Create game (host+)
-POST   /api/games/:id/start    - Start game
-POST   /api/games/:id/pause    - Pause
-POST   /api/games/:id/resume   - Resume
-POST   /api/games/:id/end      - End game (updates rolling balances)
-POST   /api/games/:id/float    - Add float
-POST   /api/games/:id/expense  - Add expense
-POST   /api/games/:id/table-cashout - Cash out all + expenses
-POST   /api/games/:id/invite   - Invite players (WhatsApp)
+GET    /api/games           - List games (subscription filtered)
+POST   /api/games           - Create game (HOST+)
+GET    /api/games/:id       - Get game details + stats
+PUT    /api/games/:id       - Update game
+DELETE /api/games/:id       - Cancel game
+POST   /api/games/:id/start - Start game
+POST   /api/games/:id/pause - Pause game
+POST   /api/games/:id/resume - Resume game
+POST   /api/games/:id/end   - End game (updates rolling balances)
+POST   /api/games/:id/float - Add float (dealer escrow)
+POST   /api/games/:id/expense - Add expense
+POST   /api/games/:id/table-cashout - Batch cash-out all players
+POST   /api/games/:id/invite - Invite players
 ```
 
 ### Transactions
 ```
-POST /api/transactions/buy-in       - Buy-in / rejoin (host)
-POST /api/transactions/top-up       - Add points (host)
-POST /api/transactions/cash-out     - Individual cash-out (host)
-POST /api/transactions/adjustment   - Balance correction (host)
-PUT  /api/transactions/:txId        - Edit past transaction
-GET  /api/transactions/game/:id     - Game transactions
-GET  /api/transactions/player/:id   - Player transaction history
+POST /api/transactions/buy-in     - Initial buy-in or rejoin
+POST /api/transactions/top-up     - Add chips during game
+POST /api/transactions/cash-out   - Cash out (flexible amount)
+POST /api/transactions/adjustment - Host correction
+PUT  /api/transactions/:id        - Edit transaction (HOST+)
+GET  /api/transactions/game/:id   - Game transactions
+GET  /api/transactions/player/:id - Player transactions
 ```
 
-### Stats & Export
+### Players
 ```
-GET  /api/stats/host-dashboard     - Host grid view (all players, rolling balances)
-GET  /api/stats/my-stats           - Player personal stats
-GET  /api/stats/game-history       - Completed games
-GET  /api/export/game/:id          - Download game Excel
+GET  /api/players              - List all players (search)
+POST /api/players              - Create player
+GET  /api/players/:id          - Get player details
+GET  /api/players/:id/history  - Player game history
+GET  /api/players/balances/rolling - All rolling balances
+POST /api/players/reminder/:id - Send settlement reminder
 ```
 
-### Players & Settlement
+### Stats
 ```
-GET  /api/players                  - List players
-POST /api/players                  - Create player (host)
-GET  /api/players/balances/rolling - Rolling balances
-POST /api/players/reminder/:id     - Send settlement reminder
-POST /api/players/send-summary/:id - Send balance summary
+GET /api/stats/host-dashboard  - Host dashboard (grid view)
+GET /api/stats/my-stats        - Personal statistics
+GET /api/stats/game-history    - Completed games list
+```
+
+### Export
+```
+GET /api/export/game/:id - Download Excel (4 sheets)
 ```
 
 ### Notifications
 ```
-GET  /api/notifications/inbox      - In-app inbox
-PUT  /api/notifications/inbox/:id/read - Mark read
-PUT  /api/notifications/whatsapp-toggle - Enable/disable WhatsApp
+GET /api/notifications/inbox      - Get inbox messages
+PUT /api/notifications/inbox/:id/read - Mark read
+PUT /api/notifications/inbox/read-all - Mark all read
+PUT /api/notifications/whatsapp-toggle - Toggle WhatsApp
+GET /api/notifications/preferences - Get preferences
 ```
 
-## Tech Stack
-- **Frontend**: React 18, Vite, Tailwind CSS, React Router
-- **Backend**: Node.js, Express, Prisma ORM, PostgreSQL
-- **Real-time**: WebSocket
-- **Notifications**: WhatsApp Cloud API
-- **Export**: ExcelJS
+## Database Schema
+
+### Models
+- **User**: Players, hosts, admins with roles and subscriptions
+- **Game**: Game sessions with status tracking
+- **GamePlayer**: Junction table with session support for rejoin
+- **Transaction**: All financial transactions
+- **GameFloat**: Dealer escrow tracking (renamed from Float)
+- **Expense**: Game expenses (food, rent, etc.)
+- **RollingBalance**: Cross-game player-host balances
+- **Notification**: Notification log
+- **InboxMessage**: In-app messages
+
+## Mobile Optimization
+
+- **Safe Areas**: iOS/Android notch and navigation bar support
+- **Back Button**: Android back button navigates (doesn't close app)
+- **PWA Ready**: Add manifest.json for installability
+- **Touch Friendly**: 44x44px minimum touch targets
+
+## Project Structure
+
+```
+pokerledger-pro/
+├── backend/
+│   ├── prisma/
+│   │   └── schema.prisma
+│   ├── src/
+│   │   ├── index.js
+│   │   ├── middleware/
+│   │   │   └── auth.js
+│   │   ├── routes/
+│   │   │   ├── auth.js
+│   │   │   ├── games.js
+│   │   │   ├── transactions.js
+│   │   │   ├── players.js
+│   │   │   ├── stats.js
+│   │   │   ├── export.js
+│   │   │   ├── notifications.js
+│   │   │   └── webhooks.js
+│   │   └── services/
+│   │       ├── websocket.js
+│   │       └── whatsapp.js
+│   ├── package.json
+│   └── .env.example
+└── frontend/
+    ├── src/
+    │   ├── App.jsx
+    │   ├── main.jsx
+    │   ├── context/
+    │   │   └── AuthContext.jsx
+    │   ├── services/
+    │   │   ├── api.js
+    │   │   └── websocket.js
+    │   ├── hooks/
+    │   │   └── index.js
+    │   ├── components/
+    │   │   └── ui.jsx
+    │   ├── pages/
+    │   │   ├── Login.jsx
+    │   │   ├── Register.jsx
+    │   │   ├── Dashboard.jsx
+    │   │   ├── CreateGame.jsx
+    │   │   ├── GameDetail.jsx
+    │   │   ├── Players.jsx
+    │   │   ├── Stats.jsx
+    │   │   ├── History.jsx
+    │   │   ├── Inbox.jsx
+    │   │   └── Profile.jsx
+    │   └── styles/
+    │       └── index.css
+    ├── index.html
+    ├── vite.config.js
+    ├── tailwind.config.js
+    └── package.json
+```
+
+## Subscription Model
+
+| Tier | Limits |
+|------|--------|
+| FREE | Last 3 games visible |
+| PREMIUM | Full access |
+
+## WhatsApp Messages
+
+Simple, privacy-focused notifications:
+- Buy-in: "100 points credited at 8:30 PM"
+- Cash-out: "Debited 300 points, balance 450 points. Net: +150 points"
+- Reminder: "Outstanding balance: 200 points"
+
+## License
+
+MIT

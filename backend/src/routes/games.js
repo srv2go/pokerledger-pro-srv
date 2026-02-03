@@ -68,7 +68,7 @@ router.get('/:id', async (req, res, next) => {
           orderBy: { joinedAt: 'asc' }
         },
         transactions: { orderBy: { createdAt: 'desc' }, take: 50, include: { player: { select: { id: true, displayName: true } } } },
-        floats: { orderBy: { createdAt: 'desc' } },
+        gameFloats: { orderBy: { createdAt: 'desc' } },
         expenses: { orderBy: { createdAt: 'desc' } },
       }
     });
@@ -80,7 +80,7 @@ router.get('/:id', async (req, res, next) => {
     const activePlayers = game.players.filter(p => p.status === 'ACTIVE');
     const totalBuyIns = game.players.reduce((s, p) => s + parseFloat(p.totalInvested || 0), 0);
     const totalCashOuts = game.players.filter(p => p.cashOut !== null).reduce((s, p) => s + parseFloat(p.cashOut || 0), 0);
-    const totalFloat = game.floats?.reduce((s, f) => s + parseFloat(f.amount), 0) || 0;
+    const totalFloat = game.gameFloats?.reduce((s, f) => s + parseFloat(f.amount), 0) || 0;
     const totalExpenses = game.expenses?.reduce((s, e) => s + parseFloat(e.amount), 0) || 0;
 
     const isHost = game.hostId === req.user.id || ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
@@ -185,11 +185,11 @@ router.post('/:id/float', requireMinRole('HOST'), [
 ], async (req, res, next) => {
   try {
     const { amount, notes } = req.body;
-    const float = await prisma.floatRecord.create({
+    const gameFloat = await prisma.gameFloat.create({
       data: { gameId: req.params.id, amount, notes }
     });
-    broadcastGameUpdate(req.params.id, { newFloat: float });
-    res.status(201).json({ float });
+    broadcastGameUpdate(req.params.id, { newFloat: gameFloat });
+    res.status(201).json({ float: gameFloat });
   } catch (err) { next(err); }
 });
 
