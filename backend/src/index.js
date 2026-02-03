@@ -10,11 +10,17 @@ const { initWebSocket } = require('./services/websocket');
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy for Render (required for rate limiting behind reverse proxy)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
+
+// Health check endpoint
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // Auth middleware
 const { authenticate } = require('./middleware/auth');

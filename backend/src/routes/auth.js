@@ -176,4 +176,20 @@ router.post('/promote', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── DEBUG: LIST ALL USERS (for admin troubleshooting) ──
+router.get('/debug/users', async (req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, email: true, displayName: true, role: true, subscription: true, whatsappEnabled: true, createdAt: true }
+    });
+    const roleCounts = {
+      SUPER_ADMIN: users.filter(u => u.role === 'SUPER_ADMIN').length,
+      ADMIN: users.filter(u => u.role === 'ADMIN').length,
+      HOST: users.filter(u => u.role === 'HOST').length,
+      PLAYER: users.filter(u => u.role === 'PLAYER').length,
+    };
+    res.json({ total: users.length, roleCounts, users });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
