@@ -10,6 +10,7 @@ const formatPhone = (phone) => phone ? phone.replace(/[\s\-\+\(\)]/g, '') : null
 const sendMessage = async (to, message) => {
   const phone = formatPhone(to);
   if (!phone || !PHONE_NUMBER_ID || !ACCESS_TOKEN) {
+    console.log(`WA skip: ${!phone ? 'no phone' : 'not configured'}`);
     return { success: false, reason: phone ? 'not_configured' : 'no_phone' };
   }
   try {
@@ -19,10 +20,14 @@ const sendMessage = async (to, message) => {
       body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: phone, type: 'text', text: { preview_url: false, body: message } }),
     });
     const data = await resp.json();
-    if (!resp.ok) { console.error('WhatsApp error:', data); return { success: false, error: data.error?.message }; }
+    if (!resp.ok) { 
+      console.error(`WhatsApp API error to ${phone}:`, data.error?.message || data); 
+      return { success: false, error: data.error?.message }; 
+    }
+    console.log(`WA sent to ${phone}: ${data.messages?.[0]?.id}`);
     return { success: true, messageId: data.messages?.[0]?.id };
   } catch (err) {
-    console.error('WhatsApp send error:', err);
+    console.error('WhatsApp send error:', err.message);
     return { success: false, error: err.message };
   }
 };
