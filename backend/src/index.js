@@ -35,6 +35,7 @@ app.use('/api/players', authenticate, require('./routes/players'));
 app.use('/api/transactions', authenticate, require('./routes/transactions'));
 app.use('/api/notifications', authenticate, require('./routes/notifications'));
 app.use('/api/stats', authenticate, require('./routes/stats'));
+app.use('/api/automations', authenticate, require('./routes/automations'));
 app.use('/api/export', authenticate, require('./routes/export'));
 
 // Serve frontend in production

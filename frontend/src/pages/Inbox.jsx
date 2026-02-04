@@ -36,12 +36,12 @@ export default function InboxPage() {
   if (loading) return <LoadingScreen />;
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-24">
+    <div className="min-h-screen bg-[var(--color-gray-50)] pb-28">
       <header className="sticky-header px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-white">Inbox</h1>
-            {unread > 0 && <p className="text-xs text-felt-400">{unread} unread</p>}
+            <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Inbox</h1>
+            {unread > 0 && <p className="text-xs text-brand-600">{unread} unread</p>}
           </div>
           {unread > 0 && <Button size="sm" variant="ghost" onClick={markAllRead}><CheckCheck className="w-4 h-4" /> Read All</Button>}
         </div>
@@ -53,12 +53,12 @@ export default function InboxPage() {
         ) : (
           <div className="space-y-2">
             {messages.map(m => (
-              <Card key={m.id} className={`p-4 cursor-pointer transition ${!m.isRead ? 'border-felt-800 bg-felt-950/20' : ''}`} onClick={() => !m.isRead && markRead(m.id)}>
+              <Card key={m.id} className={`p-4 cursor-pointer transition ${!m.isRead ? 'border-brand-200 bg-brand-50/60' : ''}`} onClick={() => !m.isRead && markRead(m.id)}>
                 <div className="flex items-start gap-3">
-                  {m.isRead ? <MailOpen className="w-5 h-5 text-gray-600 mt-0.5 shrink-0" /> : <Mail className="w-5 h-5 text-felt-400 mt-0.5 shrink-0" />}
+                  {m.isRead ? <MailOpen className="w-5 h-5 text-gray-500 mt-0.5 shrink-0" /> : <Mail className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />}
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium ${m.isRead ? 'text-gray-400' : 'text-white'}`}>{m.title}</p>
-                    <p className="text-sm text-gray-500 mt-0.5">{m.body}</p>
+                    <p className={`text-sm font-medium ${m.isRead ? 'text-gray-500' : 'text-[var(--color-text-primary)]'}`}>{m.title}</p>
+                    <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">{m.body}</p>
                     <p className="text-xs text-gray-600 mt-1">{fmtTime(m.createdAt)}</p>
                   </div>
                 </div>
@@ -68,7 +68,7 @@ export default function InboxPage() {
         )}
       </main>
 
-      <BottomNav current="/inbox" navigate={nav} isHost={isHost} />
+      <BottomNav current="/inbox" navigate={nav} />
     </div>
   );
 }

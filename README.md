@@ -61,8 +61,11 @@ cp .env.example .env
 # Edit .env with your DATABASE_URL and secrets
 
 # Initialize database
-npx prisma db push
+npm run db:migrate
 npx prisma generate
+
+# (Optional) seed default staging data
+npm run db:seed
 
 # Start server
 npm run dev

@@ -72,11 +72,18 @@ export const statsApi = {
   gameHistory: () => request('/stats/game-history'),
 };
 
+export const automationsApi = {
+  list: () => request('/automations'),
+  update: (id, body) => request(`/automations/${id}`, { method: 'PUT', body }),
+  playerOverride: (playerId, body) => request(`/automations/player/${playerId}`, { method: 'POST', body }),
+};
+
 export const notificationsApi = {
   getInbox: () => request('/notifications/inbox'),
   markRead: (id) => request(`/notifications/inbox/${id}/read`, { method: 'PUT' }),
   markAllRead: () => request('/notifications/inbox/read-all', { method: 'PUT' }),
   toggleWhatsapp: (enabled) => request('/notifications/whatsapp-toggle', { method: 'PUT', body: { enabled } }),
+  toggleSms: (enabled) => request('/notifications/sms-toggle', { method: 'PUT', body: { enabled } }),
   getPreferences: () => request('/notifications/preferences'),
 };
 

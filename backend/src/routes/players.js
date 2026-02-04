@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { requireMinRole } = require('../middleware/auth');
-const { sendSettlementReminder } = require('../services/whatsapp');
+const { sendSettlementReminder, seedDefaultConsents, setChannelConsent } = require('../services/messaging');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -65,6 +65,7 @@ router.post('/', requireMinRole('HOST'), [
       },
       select: { id: true, displayName: true, email: true, phone: true, role: true },
     });
+    await seedDefaultConsents(player.id);
     res.status(201).json({ player });
   } catch (err) { next(err); }
 });
@@ -78,6 +79,9 @@ router.put('/:id', async (req, res, next) => {
       data: { ...(displayName && { displayName }), ...(phone !== undefined && { phone }), ...(whatsappEnabled !== undefined && { whatsappEnabled }) },
       select: { id: true, displayName: true, phone: true, role: true, whatsappEnabled: true },
     });
+    if (whatsappEnabled !== undefined) {
+      await setChannelConsent(player.id, 'WHATSAPP', !!whatsappEnabled, 'host_override');
+    }
     res.json({ player });
   } catch (err) { next(err); }
 });
@@ -151,7 +155,7 @@ router.post('/reminder/:playerId', requireMinRole('HOST'), async (req, res, next
     });
 
     // Send WhatsApp if enabled
-    if (player.phone && player.whatsappEnabled) {
+    if (player.phone) {
       await sendSettlementReminder(player, amount, owes, req.user.displayName).catch(console.warn);
     }
 

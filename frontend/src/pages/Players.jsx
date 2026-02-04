@@ -24,11 +24,11 @@ export default function PlayersPage() {
   useEffect(() => { load(); }, []);
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-24">
+    <div className="min-h-screen bg-[var(--color-gray-50)] pb-28">
       {/* Header with safe area — + button positioned below status bar */}
       <header className="sticky-header px-4 py-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-white">Players</h1>
+          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Players</h1>
           {isHost && (
             <Button size="sm" variant="ghost" onClick={() => setShowAdd(true)}>
               <UserPlus className="w-4 h-4" /> Add
@@ -50,17 +50,21 @@ export default function PlayersPage() {
         ) : (
           <div className="space-y-2">
             {players.map(p => (
-              <Card key={p.id} className="p-4 cursor-pointer hover:border-gray-700 transition" onClick={() => nav(`/player/${p.id}`)}>
+              <Card key={p.id} className="p-4 cursor-pointer hover:border-brand-200 transition" onClick={() => nav(`/player/${p.id}`)}>
                 <div className="flex items-center gap-3">
                   <Avatar name={p.displayName} />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-white truncate">{p.displayName}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <p className="font-medium text-[var(--color-text-primary)] truncate">{p.displayName}</p>
+                    <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)]">
                       {p.phone && <span><Phone className="w-3 h-3 inline" /> {p.phone}</span>}
                       {p.email && !p.email.includes('@temp.') && <span><Mail className="w-3 h-3 inline" /> {p.email}</span>}
                     </div>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${p.role === 'HOST' ? 'bg-felt-500/20 text-felt-400' : p.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-400' : 'bg-gray-800 text-gray-400'}`}>
+                  <span className={`text-xs px-2 py-1 rounded-full ${p.role === 'HOST'
+                    ? 'bg-[var(--color-primary-50)] text-[var(--color-primary-700)]'
+                    : p.role === 'ADMIN'
+                      ? 'bg-[var(--color-gray-200)] text-[var(--color-text-primary)]'
+                      : 'bg-[var(--color-gray-100)] text-[var(--color-text-secondary)]'}`}>
                     {p.role}
                   </span>
                 </div>
@@ -71,7 +75,7 @@ export default function PlayersPage() {
       </main>
 
       <AddPlayerModal isOpen={showAdd} onClose={() => setShowAdd(false)} onDone={(m) => { load(); toast.success(m); }} onErr={toast.error} />
-      <BottomNav current="/players" navigate={nav} isHost={isHost} />
+      <BottomNav current="/players" navigate={nav} />
       <Toast toasts={toast.toasts} remove={toast.remove} />
     </div>
   );

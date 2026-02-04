@@ -22,7 +22,7 @@ export default function GameDetail() {
   if (loading) return <LoadingScreen />;
   if (error || !game) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <Card className="p-6 text-center"><AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" /><h2 className="text-lg font-bold text-white mb-2">Game Not Found</h2><Button onClick={() => nav('/')}>Back</Button></Card>
+      <Card className="card-dark p-6 text-center"><AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" /><h2 className="text-lg font-bold text-white mb-2">Game Not Found</h2><Button onClick={() => nav('/')}>Back</Button></Card>
     </div>
   );
 
@@ -35,8 +35,8 @@ export default function GameDetail() {
   const doAction = async (fn) => { setBusy(true); try { await fn(); refresh(); } catch (e) { toast.error(e.message); } finally { setBusy(false); } };
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-8">
-      <header className="sticky-header px-4 py-3">
+    <div className="min-h-screen bg-[#0f172a] pb-8">
+      <header className="sticky-header px-4 py-3" style={{ background: 'rgba(15, 23, 42, 0.95)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => nav(-1)} className="p-2 rounded-lg hover:bg-gray-800"><ArrowLeft className="w-5 h-5 text-gray-400" /></button>
           <div className="flex-1 min-w-0">
@@ -50,14 +50,14 @@ export default function GameDetail() {
       <main className="px-4 py-4 space-y-5 page-enter">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2">
-          <StatCard label="Players" value={activePlayers.length} icon={Users} />
-          <StatCard label="Total Pot" value={fmtPts(stats?.totalPot)} icon={DollarSign} />
-          <StatCard label="Avg Stack" value={fmtPts(stats?.averageStack)} icon={TrendingUp} />
+          <StatCard label="Players" value={activePlayers.length} icon={Users} className="card-dark" />
+          <StatCard label="Total Pot" value={fmtPts(stats?.totalPot)} icon={DollarSign} className="card-dark" />
+          <StatCard label="Avg Stack" value={fmtPts(stats?.averageStack)} icon={TrendingUp} className="card-dark" />
         </div>
 
         {/* Rake tally (host/admin only) */}
         {isHost && stats?.tallyCheck && (
-          <Card className="p-3">
+          <Card className="card-dark p-3">
             <p className="text-xs font-semibold text-gray-400 mb-2">TALLY (Float + Buy-ins) - Cash-outs - Expenses = Rake</p>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div><span className="text-gray-500">Float + Buy-ins:</span> <span className="text-white">{fmtPts(stats.tallyCheck.floatPlusBuyIns)}</span></div>
@@ -97,9 +97,9 @@ export default function GameDetail() {
           </div>
 
           {players.length === 0 ? (
-            <Card className="p-6"><EmptyState icon={Users} title="No players" description="Add players to start" /></Card>
+            <Card className="card-dark p-6"><EmptyState icon={Users} title="No players" description="Add players to start" tone="inverted" /></Card>
           ) : (
-            <Card className="divide-y divide-gray-800">
+            <Card className="card-dark divide-y divide-gray-800">
               {players.map(gp => (
                 <div key={gp.id} className="p-4">
                   <div className="flex items-center justify-between">

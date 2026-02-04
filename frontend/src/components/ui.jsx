@@ -14,11 +14,11 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
-      <div className={`relative w-full ${w} bg-gray-900 rounded-t-2xl sm:rounded-2xl border border-gray-800 animate-slide-up max-h-[85vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
+      <div className={`relative w-full ${w} bg-white rounded-t-2xl sm:rounded-2xl border border-[var(--color-gray-200)] shadow-2xl animate-slide-up max-h-[85vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
         {title && (
-          <div className="flex items-center justify-between p-4 border-b border-gray-800">
-            <h3 className="font-bold text-lg text-white">{title}</h3>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-800"><X className="w-5 h-5 text-gray-400" /></button>
+          <div className="flex items-center justify-between p-4 border-b border-[var(--color-gray-200)]">
+            <h3 className="font-semibold text-lg text-[var(--color-text-primary)]">{title}</h3>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-[var(--color-gray-100)]"><X className="w-5 h-5 text-gray-500" /></button>
           </div>
         )}
         {children}
@@ -45,7 +45,7 @@ export const Select = ({ label, options = [], className = '', ...p }) => (
 export const Avatar = ({ name = '', size = 'md' }) => {
   const s = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-12 h-12 text-lg' : 'w-10 h-10 text-sm';
   const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-  const colors = ['bg-felt-600', 'bg-blue-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600', 'bg-cyan-600'];
+  const colors = ['bg-brand-500', 'bg-brand-700', 'bg-accent-600', 'bg-warning-500', 'bg-error-500', 'bg-[#546E7A]'];
   const c = colors[name.length % colors.length];
   return <div className={`${s} ${c} rounded-full flex items-center justify-center font-bold text-white shrink-0`}>{initials}</div>;
 };
@@ -56,10 +56,10 @@ export const Badge = ({ children, variant = 'info' }) => {
 };
 
 export const StatCard = ({ label, value, icon: Icon, className = '' }) => (
-  <Card className={`p-3 ${className}`}>
-    {Icon && <Icon className="w-4 h-4 text-gray-500 mb-1" />}
-    <p className="text-xs text-gray-400">{label}</p>
-    <p className="text-lg font-bold text-white truncate">{value}</p>
+  <Card className={`p-4 ${className}`}>
+    {Icon && <Icon className="w-4 h-4 text-brand-500 mb-2" />}
+    <p className="text-xs text-gray-500">{label}</p>
+    <p className="text-xl font-semibold text-[var(--color-text-primary)] truncate">{value}</p>
   </Card>
 );
 
@@ -69,19 +69,33 @@ export const LoadingScreen = ({ message = 'Loading...' }) => (
   </div>
 );
 
-export const EmptyState = ({ icon: Icon, title, description, action }) => (
-  <div className="text-center py-8">
-    {Icon && <Icon className="w-12 h-12 text-gray-600 mx-auto mb-3" />}
-    <h3 className="font-semibold text-gray-300 mb-1">{title}</h3>
-    {description && <p className="text-sm text-gray-500 mb-4">{description}</p>}
-    {action}
-  </div>
-);
+export const EmptyState = ({ icon: Icon, title, description, action, tone = 'default' }) => {
+  const iconColor = tone === 'inverted' ? 'text-white/70' : 'text-brand-500';
+  const titleColor = tone === 'inverted' ? 'text-white' : 'text-[var(--color-text-primary)]';
+  const descColor = tone === 'inverted' ? 'text-gray-300' : 'text-[var(--color-text-secondary)]';
+
+  return (
+    <div className="text-center py-8">
+      {Icon && <Icon className={`w-12 h-12 mx-auto mb-3 ${iconColor}`} />}
+      <h3 className={`font-semibold mb-1 ${titleColor}`}>{title}</h3>
+      {description && <p className={`text-sm mb-4 ${descColor}`}>{description}</p>}
+      {action}
+    </div>
+  );
+};
 
 export const Toast = ({ toasts, remove }) => (
   <div className="fixed top-4 right-4 left-4 z-[100] space-y-2 pointer-events-none" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
     {toasts.map(t => (
-      <div key={t.id} className={`p-3 rounded-xl text-sm font-medium animate-slide-up pointer-events-auto ${t.type === 'success' ? 'bg-felt-600 text-white' : t.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-200 border border-gray-700'}`} onClick={() => remove(t.id)}>
+      <div
+        key={t.id}
+        className={`p-3 rounded-xl text-sm font-medium animate-slide-up pointer-events-auto ${t.type === 'success'
+          ? 'bg-brand-600 text-white'
+          : t.type === 'error'
+            ? 'bg-error-500 text-white'
+            : 'bg-[var(--color-gray-900)] text-gray-100 border border-[var(--color-gray-800)]'}`}
+        onClick={() => remove(t.id)}
+      >
         {t.message}
       </div>
     ))}
@@ -89,10 +103,10 @@ export const Toast = ({ toasts, remove }) => (
 );
 
 export const Tabs = ({ tabs, active, onChange }) => (
-  <div className="flex bg-gray-800 rounded-xl p-1 gap-1">
+  <div className="flex bg-[var(--color-gray-100)] rounded-xl p-1 gap-1">
     {tabs.map(t => (
       <button key={t.value} onClick={() => onChange(t.value)}
-        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition ${active === t.value ? 'bg-felt-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}>
+        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition ${active === t.value ? 'bg-brand-500 text-white' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'}`}>
         {t.label}
       </button>
     ))}

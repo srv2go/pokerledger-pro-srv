@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { JWT_SECRET, authenticate } = require('../middleware/auth');
+const { seedDefaultConsents, setChannelConsent } = require('../services/messaging');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -40,6 +41,7 @@ router.post('/register', [
       data: { email, passwordHash, displayName, phone, pin: pinHash, role },
       select: { id: true, email: true, displayName: true, phone: true, role: true, subscription: true, whatsappEnabled: true }
     });
+    await seedDefaultConsents(user.id);
 
     const token = generateToken(user.id);
     const rememberToken = generateRememberToken(user.id);
@@ -144,6 +146,9 @@ router.put('/profile', authenticate, async (req, res, next) => {
       },
       select: { id: true, email: true, displayName: true, phone: true, role: true, subscription: true, whatsappEnabled: true }
     });
+    if (whatsappEnabled !== undefined) {
+      await setChannelConsent(user.id, 'WHATSAPP', !!whatsappEnabled, 'profile_toggle');
+    }
     res.json({ user });
   } catch (err) { next(err); }
 });

@@ -2,7 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { requireMinRole } = require('../middleware/auth');
-const { notifyBuyIn, notifyTopUp, notifyCashOut } = require('../services/whatsapp');
+const { notifyBuyIn, notifyTopUp, notifyCashOut } = require('../services/messaging');
 const { notifyTransaction, broadcastGameUpdate } = require('../services/websocket');
 
 const router = express.Router();
@@ -76,7 +76,7 @@ router.post('/buy-in', [
     });
 
     // WhatsApp notification
-    if (sendNotification && player.phone && player.whatsappEnabled) {
+    if (sendNotification && player?.phone) {
       notifyBuyIn(player, game, amount, !isFirstBuyIn).catch(console.warn);
     }
 
@@ -119,7 +119,7 @@ router.post('/top-up', [
       data: { gameId, playerId, type: 'TOP_UP', amount, paymentMethod, session: gamePlayer.session }
     });
 
-    if (sendNotification && player?.phone && player?.whatsappEnabled) {
+    if (sendNotification && player?.phone) {
       notifyTopUp(player, game, amount, parseFloat(gamePlayer.totalInvested)).catch(console.warn);
     }
 
@@ -166,7 +166,7 @@ router.post('/cash-out', [
       data: { gameId, playerId, type: 'CASH_OUT', amount, session: existing.session }
     });
 
-    if (sendNotification && existing.player?.phone && existing.player?.whatsappEnabled) {
+    if (sendNotification && existing.player?.phone) {
       notifyCashOut(existing.player, game, amount, totalInvested).catch(console.warn);
     }
 

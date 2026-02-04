@@ -5,14 +5,17 @@ import { LoadingScreen } from './components/ui';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
+import Home from './pages/Dashboard';
+import GamesPage from './pages/Games';
 import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
 import Players from './pages/Players';
+import LedgerPage from './pages/Ledger';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import Inbox from './pages/Inbox';
 import Profile from './pages/Profile';
+import AutomationsPage from './pages/Automations';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -64,14 +67,17 @@ export default function App() {
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
           {/* Protected */}
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/games" element={<ProtectedRoute><GamesPage /></ProtectedRoute>} />
           <Route path="/create-game" element={<ProtectedRoute><CreateGame /></ProtectedRoute>} />
           <Route path="/game/:id" element={<ProtectedRoute><GameDetail /></ProtectedRoute>} />
           <Route path="/players" element={<ProtectedRoute><Players /></ProtectedRoute>} />
+          <Route path="/ledger" element={<ProtectedRoute><LedgerPage /></ProtectedRoute>} />
+          <Route path="/automations" element={<ProtectedRoute><AutomationsPage /></ProtectedRoute>} />
           <Route path="/stats" element={<ProtectedRoute><Stats /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
           <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

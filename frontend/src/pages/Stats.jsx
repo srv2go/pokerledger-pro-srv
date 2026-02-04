@@ -36,9 +36,9 @@ export default function StatsPage() {
   if (loading) return <LoadingScreen />;
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-24">
+    <div className="min-h-screen bg-[var(--color-gray-50)] pb-28">
       <header className="sticky-header px-4 py-3">
-        <h1 className="text-lg font-bold text-white">Stats</h1>
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Stats</h1>
         {isHost && (
           <div className="mt-3">
             <Tabs tabs={[{ value: 'host', label: 'Host Dashboard' }, { value: 'personal', label: 'My Stats' }]} active={tab} onChange={setTab} />
@@ -51,8 +51,8 @@ export default function StatsPage() {
           <div className="space-y-6">
             {/* Summary */}
             <div className="grid grid-cols-2 gap-3">
-              <Card className="p-3"><p className="text-xs text-gray-400">Total Games</p><p className="text-2xl font-bold text-white">{data.totalGames}</p></Card>
-              <Card className="p-3"><p className="text-xs text-gray-400">Total Players</p><p className="text-2xl font-bold text-white">{data.playerStats.length}</p></Card>
+              <Card className="p-3"><p className="text-xs text-gray-500">Total Games</p><p className="text-2xl font-semibold text-[var(--color-text-primary)]">{data.totalGames}</p></Card>
+              <Card className="p-3"><p className="text-xs text-gray-500">Total Players</p><p className="text-2xl font-semibold text-[var(--color-text-primary)]">{data.playerStats.length}</p></Card>
             </div>
 
             {/* Player Grid */}
@@ -67,7 +67,7 @@ export default function StatsPage() {
                       <div className="flex items-center gap-3">
                         <Avatar name={p.displayName} />
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-white truncate">{p.displayName}</p>
+                          <p className="font-medium text-[var(--color-text-primary)] truncate">{p.displayName}</p>
                           <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
                             <span>{p.totalGames} games</span>
                             <span>In: {fmtPts(p.totalBuyIn)}</span>
@@ -98,15 +98,15 @@ export default function StatsPage() {
             <section>
               <h2 className="text-sm font-semibold text-gray-400 uppercase mb-3">Game History</h2>
               {data.gameSummaries.map(g => (
-                <Card key={g.id} className="p-3 mb-2 cursor-pointer hover:border-gray-700" onClick={() => nav(`/game/${g.id}`)}>
+                <Card key={g.id} className="p-3 mb-2 cursor-pointer hover:border-brand-200" onClick={() => nav(`/game/${g.id}`)}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-white">{g.name}</p>
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">{g.name}</p>
                       <p className="text-xs text-gray-500">{new Date(g.date).toLocaleDateString()} • {g.playerCount} players</p>
                     </div>
                     <div className="text-right text-sm">
                       <p className="text-gray-400">{fmtPts(g.totalBuyIn)} in</p>
-                      {g.rake !== undefined && <p className="text-xs text-felt-400">Rake: {fmtPts(g.rake)}</p>}
+                      {g.rake !== undefined && <p className="text-xs text-brand-600">Rake: {fmtPts(g.rake)}</p>}
                     </div>
                   </div>
                 </Card>
@@ -118,7 +118,7 @@ export default function StatsPage() {
         )}
       </main>
 
-      <BottomNav current="/stats" navigate={nav} isHost={isHost} />
+      <BottomNav current="/stats" navigate={nav} />
       <Toast toasts={toast.toasts} remove={toast.remove} />
     </div>
   );
@@ -132,10 +132,10 @@ function PersonalStats({ data }) {
     <div className="space-y-4">
       {data.isLimited && <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm text-amber-400">Free plan: Showing last 3 games. Upgrade for full history.</div>}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="p-3"><p className="text-xs text-gray-400">Games Played</p><p className="text-2xl font-bold text-white">{s.totalGames}</p></Card>
-        <Card className="p-3"><p className="text-xs text-gray-400">Win Rate</p><p className="text-2xl font-bold text-white">{s.winRate}%</p></Card>
-        <Card className="p-3"><p className="text-xs text-gray-400">Total Buy-in</p><p className="text-lg font-bold text-white">{fmtPts(s.totalBuyIn)}</p></Card>
-        <Card className="p-3"><p className="text-xs text-gray-400">Total Cash-out</p><p className="text-lg font-bold text-white">{fmtPts(s.totalCashOut)}</p></Card>
+        <Card className="p-3"><p className="text-xs text-gray-500">Games Played</p><p className="text-2xl font-semibold text-[var(--color-text-primary)]">{s.totalGames}</p></Card>
+        <Card className="p-3"><p className="text-xs text-gray-500">Win Rate</p><p className="text-2xl font-semibold text-[var(--color-text-primary)]">{s.winRate}%</p></Card>
+        <Card className="p-3"><p className="text-xs text-gray-500">Total Buy-in</p><p className="text-lg font-semibold text-[var(--color-text-primary)]">{fmtPts(s.totalBuyIn)}</p></Card>
+        <Card className="p-3"><p className="text-xs text-gray-500">Total Cash-out</p><p className="text-lg font-semibold text-[var(--color-text-primary)]">{fmtPts(s.totalCashOut)}</p></Card>
         <Card className="p-3"><p className="text-xs text-gray-400">Net P/L</p><p className={`text-lg font-bold ${s.totalProfit >= 0 ? 'chip-positive' : 'chip-negative'}`}>{fmtPts(s.totalProfit, true)}</p></Card>
         <Card className="p-3"><p className="text-xs text-gray-400">Best Win</p><p className="text-lg font-bold chip-positive">{fmtPts(s.biggestWin)}</p></Card>
       </div>
@@ -146,7 +146,7 @@ function PersonalStats({ data }) {
           <Card key={g.id} className="p-3 mb-2">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-white">{g.game.name}</p>
+                <p className="text-sm font-medium text-[var(--color-text-primary)]">{g.game.name}</p>
                 <p className="text-xs text-gray-500">{new Date(g.game.startTime).toLocaleDateString()} • {fmtPts(g.totalInvested)} in</p>
               </div>
               {g.finalBalance !== null && (

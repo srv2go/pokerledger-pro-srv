@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../services/api';
 import wsService from '../services/websocket';
+import { biometricService } from '../services/biometric';
 
 const AuthContext = createContext(null);
 
@@ -10,6 +11,51 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [needsPin, setNeedsPin] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('biometricEnabled') === 'true';
+  });
+  const [trustedDevices, setTrustedDevices] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem('trustedDevices')) || []; }
+    catch { return []; }
+  });
+
+  const persistDevices = (updater) => {
+    setTrustedDevices(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      localStorage.setItem('trustedDevices', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const rememberCurrentDevice = () => {
+    if (typeof window === 'undefined') return;
+    const fingerprint = navigator.userAgent || 'web';
+    const deviceId = localStorage.getItem('deviceId') || (crypto?.randomUUID?.() || String(Date.now()));
+    const label = navigator.platform || 'This device';
+    persistDevices(prev => {
+      const existing = prev.find(d => d.id === deviceId || d.fingerprint === fingerprint);
+      const device = {
+        id: existing?.id || deviceId,
+        fingerprint,
+        label: existing?.label || label,
+        addedAt: existing?.addedAt || Date.now(),
+        lastUsed: Date.now(),
+      };
+      const filtered = prev.filter(d => d.id !== device.id && d.fingerprint !== fingerprint);
+      const next = [device, ...filtered].slice(0, 5);
+      localStorage.setItem('deviceId', device.id);
+      return next;
+    });
+  };
+
+  const revokeTrustedDevice = (id) => {
+    if (typeof window === 'undefined') return;
+    persistDevices(prev => prev.filter(d => d.id !== id));
+    if (localStorage.getItem('deviceId') === id) localStorage.removeItem('deviceId');
+  };
 
   // Try auto-login on mount
   useEffect(() => {
@@ -17,6 +63,9 @@ export const AuthProvider = ({ children }) => {
       const token = localStorage.getItem('token');
       const rememberToken = localStorage.getItem('rememberToken');
       const savedUserId = localStorage.getItem('userId');
+      const biometricOptIn = localStorage.getItem('biometricEnabled') === 'true';
+      const availability = await biometricService.isAvailable();
+      setBiometricSupported(availability.available);
 
       if (token) {
         try {
@@ -30,12 +79,16 @@ export const AuthProvider = ({ children }) => {
           // Token expired, try remember token
           if (rememberToken) {
             try {
+              if (biometricOptIn && availability.available) {
+                await biometricService.authenticate('Unlock LedgerAI');
+              }
               const data = await authApi.autoLogin(rememberToken);
               localStorage.setItem('token', data.token);
               localStorage.setItem('rememberToken', data.rememberToken);
               localStorage.setItem('userId', data.user.id);
               setUser(data.user);
               wsService.connect(data.token);
+              rememberCurrentDevice();
             } catch {
               clearAuth();
             }
@@ -45,12 +98,16 @@ export const AuthProvider = ({ children }) => {
         }
       } else if (rememberToken) {
         try {
+          if (biometricOptIn && availability.available) {
+            await biometricService.authenticate('Unlock LedgerAI');
+          }
           const data = await authApi.autoLogin(rememberToken);
           localStorage.setItem('token', data.token);
           localStorage.setItem('rememberToken', data.rememberToken);
           localStorage.setItem('userId', data.user.id);
           setUser(data.user);
           wsService.connect(data.token);
+          rememberCurrentDevice();
         } catch {
           clearAuth();
         }
@@ -73,6 +130,7 @@ export const AuthProvider = ({ children }) => {
     if (data.rememberToken) localStorage.setItem('rememberToken', data.rememberToken);
     setUser(data.user);
     wsService.connect(data.token);
+    if (rememberMe) rememberCurrentDevice();
     return data.user;
   };
 
@@ -83,6 +141,7 @@ export const AuthProvider = ({ children }) => {
     if (data.rememberToken) localStorage.setItem('rememberToken', data.rememberToken);
     setUser(data.user);
     wsService.connect(data.token);
+    rememberCurrentDevice();
     return data.user;
   };
 
@@ -103,12 +162,43 @@ export const AuthProvider = ({ children }) => {
     setNeedsPin(false);
   };
 
+  const enableBiometrics = async () => {
+    const availability = await biometricService.isAvailable();
+    if (!availability.available) throw new Error('Biometric authentication is not available on this device.');
+    localStorage.setItem('biometricEnabled', 'true');
+    setBiometricEnabled(true);
+    setBiometricSupported(true);
+  };
+
+  const disableBiometrics = () => {
+    localStorage.removeItem('biometricEnabled');
+    setBiometricEnabled(false);
+  };
+
   const isHost = user && ['SUPER_ADMIN', 'ADMIN', 'HOST'].includes(user.role);
   const isAdmin = user && ['SUPER_ADMIN', 'ADMIN'].includes(user.role);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, verifyPin, needsPin, isHost, isAdmin, isSuperAdmin, setUser }}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      login,
+      register,
+      logout,
+      verifyPin,
+      needsPin,
+      isHost,
+      isAdmin,
+      isSuperAdmin,
+      setUser,
+      biometricSupported,
+      biometricEnabled,
+      enableBiometrics,
+      disableBiometrics,
+      trustedDevices,
+      revokeTrustedDevice,
+    }}>
       {children}
     </AuthContext.Provider>
   );

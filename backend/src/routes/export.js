@@ -28,6 +28,12 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
 
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
+    const rollingBalances = await prisma.rollingBalance.findMany({
+      where: { hostId: game.hostId, playerId: { in: game.players.map(p => p.playerId) } },
+      select: { playerId: true, balance: true }
+    });
+    const balanceMap = rollingBalances.reduce((acc, row) => ({ ...acc, [row.playerId]: parseFloat(row.balance || 0) }), {});
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'PokerLedger Pro';
     workbook.created = new Date();
@@ -99,7 +105,39 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
     }
     playersSheet.getRow(1).font = { bold: true };
 
-    // ── Sheet 3: Transactions ──
+    // ── Sheet 3: Ledger Snapshot ──
+    const ledgerSheet = workbook.addWorksheet('Ledger Snapshot');
+    ledgerSheet.columns = [
+      { header: 'Player', key: 'player', width: 24 },
+      { header: 'Session Buy-ins (pts)', key: 'buy', width: 22 },
+      { header: 'Session Cash-outs (pts)', key: 'cash', width: 24 },
+      { header: 'Session Net (pts)', key: 'net', width: 18 },
+      { header: 'Rolling Balance (pts)', key: 'rolling', width: 22 },
+      { header: 'Status', key: 'status', width: 20 },
+    ];
+
+    for (const gp of game.players) {
+      const buyTotal = parseFloat(gp.totalInvested || 0);
+      const cashTotal = gp.cashOut !== null ? parseFloat(gp.cashOut || 0) : 0;
+      const net = gp.finalBalance !== null ? parseFloat(gp.finalBalance) : cashTotal - buyTotal;
+      const rolling = balanceMap[gp.playerId];
+      const status = typeof rolling === 'number'
+        ? (rolling < 0 ? 'Player owes host' : rolling > 0 ? 'Host owes player' : 'Settled')
+        : 'No ledger history';
+      ledgerSheet.addRow({
+        player: gp.player.displayName,
+        buy: buyTotal,
+        cash: gp.cashOut !== null ? cashTotal : '-',
+        net,
+        rolling: typeof rolling === 'number' ? rolling : '-',
+        status,
+      });
+    }
+    ledgerSheet.addRow({});
+    ledgerSheet.addRow({ player: 'Totals', buy: game.players.reduce((s, p) => s + parseFloat(p.totalInvested || 0), 0), cash: game.players.reduce((s, p) => s + parseFloat(p.cashOut || 0), 0), net: game.players.reduce((s, p) => s + parseFloat(p.finalBalance || 0), 0) });
+    ledgerSheet.getRow(1).font = { bold: true };
+
+    // ── Sheet 4: Transactions ──
     const txSheet = workbook.addWorksheet('Transactions');
     txSheet.columns = [
       { header: 'Time', key: 'time', width: 22 },
@@ -124,7 +162,7 @@ router.get('/game/:gameId', requireMinRole('HOST'), async (req, res, next) => {
     }
     txSheet.getRow(1).font = { bold: true };
 
-    // ── Sheet 4: Float & Expenses (host only) ──
+    // ── Sheet 5: Float & Expenses (host only) ──
     if (canSeeRake(req.user) && (game.gameFloats.length > 0 || game.expenses.length > 0)) {
       const feSheet = workbook.addWorksheet('Float & Expenses');
       feSheet.columns = [

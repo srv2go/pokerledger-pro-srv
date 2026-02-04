@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { checkSubscription, FREE_GAME_LIMIT } = require('../middleware/auth');
+const { setChannelConsent, getConsentSnapshot } = require('../services/messaging');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -52,13 +53,31 @@ router.put('/whatsapp-toggle', async (req, res, next) => {
   try {
     const { enabled } = req.body;
     await prisma.user.update({ where: { id: req.user.id }, data: { whatsappEnabled: !!enabled } });
+    await setChannelConsent(req.user.id, 'WHATSAPP', !!enabled, 'profile_toggle');
+    req.user.whatsappEnabled = !!enabled;
     res.json({ whatsappEnabled: !!enabled });
   } catch (err) { next(err); }
 });
 
+router.put('/sms-toggle', async (req, res, next) => {
+  try {
+    const { enabled } = req.body;
+    await setChannelConsent(req.user.id, 'SMS', !!enabled, 'profile_toggle');
+    res.json({ smsEnabled: !!enabled });
+  } catch (err) { next(err); }
+});
+
 // ─── GET PREFERENCES ─────────────────────────────────────
-router.get('/preferences', async (req, res) => {
-  res.json({ whatsappEnabled: req.user.whatsappEnabled, preferences: req.user.preferences || {} });
+router.get('/preferences', async (req, res, next) => {
+  try {
+    const snapshot = await getConsentSnapshot(req.user.id);
+    res.json({
+      whatsappEnabled: req.user.whatsappEnabled,
+      smsEnabled: snapshot.SMS === 'ALLOWED',
+      consents: snapshot,
+      preferences: req.user.preferences || {},
+    });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

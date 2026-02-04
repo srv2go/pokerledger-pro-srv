@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const { requireMinRole, canSeeRake, checkSubscription } = require('../middleware/auth');
 const { broadcastGameUpdate } = require('../services/websocket');
-const { sendGameInvitation } = require('../services/whatsapp');
+const { sendGameInvitation } = require('../services/messaging');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -279,7 +279,7 @@ router.post('/:id/invite', async (req, res, next) => {
       }
       if (sendNotification) {
         const player = await prisma.user.findUnique({ where: { id: playerId } });
-        if (player?.phone && player?.whatsappEnabled) {
+        if (player?.phone) {
           sendGameInvitation(player, game, game.host).catch(console.warn);
         }
       }

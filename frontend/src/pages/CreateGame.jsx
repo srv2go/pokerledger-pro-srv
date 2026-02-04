@@ -35,17 +35,17 @@ export default function CreateGame() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-8">
+    <div className="min-h-screen bg-[var(--color-gray-50)] pb-8">
       <header className="sticky-header px-4 py-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => nav(-1)} className="p-2 rounded-lg hover:bg-gray-800"><ArrowLeft className="w-5 h-5 text-gray-400" /></button>
-          <h1 className="font-bold text-white">Create Game</h1>
+          <button onClick={() => nav(-1)} className="p-2 rounded-lg hover:bg-[var(--color-gray-100)]"><ArrowLeft className="w-5 h-5 text-gray-500" /></button>
+          <h1 className="font-semibold text-[var(--color-text-primary)]">Launch Session</h1>
         </div>
       </header>
 
       <form onSubmit={submit} className="px-4 py-4 space-y-4 page-enter">
-        <Input label="Game Name" value={form.name} onChange={set('name')} placeholder="Friday Night Poker" required />
-        <Select label="Game Type" value={form.gameType} onChange={set('gameType')} options={GAME_TYPES} />
+        <Input label="Session Name" value={form.name} onChange={set('name')} placeholder="Friday Night Ledger" required />
+        <Select label="Session Type" value={form.gameType} onChange={set('gameType')} options={GAME_TYPES} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Buy-in (points)" type="number" value={form.buyInAmount} onChange={set('buyInAmount')} required min="0" />
           <Input label="Rake %" type="number" value={form.rakePercentage} onChange={set('rakePercentage')} min="0" max="100" step="0.1" />

@@ -1,19 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authApi, notificationsApi } from '../services/api';
 import { Card, Button, Input, Modal, Toast } from '../components/ui';
 import { BottomNav } from './Dashboard';
 import { useToast } from '../hooks';
-import { User, Shield, Bell, Key, LogOut, MessageCircle, Crown, ChevronRight } from 'lucide-react';
+import { User, Shield, Bell, Key, LogOut, MessageCircle, Crown, ChevronRight, PhoneCall } from 'lucide-react';
 
 export default function ProfilePage() {
   const nav = useNavigate();
-  const { user, isHost, isAdmin, isSuperAdmin, logout, setUser } = useAuth();
+  const {
+    user,
+    isHost,
+    isAdmin,
+    isSuperAdmin,
+    logout,
+    setUser,
+    biometricEnabled,
+    biometricSupported,
+    enableBiometrics,
+    disableBiometrics,
+    trustedDevices,
+    revokeTrustedDevice,
+  } = useAuth();
   const toast = useToast();
   const [showPin, setShowPin] = useState(false);
   const [pin, setPin] = useState('');
   const [waEnabled, setWaEnabled] = useState(user?.whatsappEnabled ?? true);
+  const [smsEnabled, setSmsEnabled] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPrefs = async () => {
+      try {
+        const prefs = await notificationsApi.getPreferences();
+        if (!mounted) return;
+        if (typeof prefs.whatsappEnabled === 'boolean') setWaEnabled(prefs.whatsappEnabled);
+        if (typeof prefs.smsEnabled === 'boolean') setSmsEnabled(prefs.smsEnabled);
+      } catch (e) {
+        console.warn('Failed to load notification prefs', e);
+      }
+    };
+    loadPrefs();
+    return () => { mounted = false; };
+  }, []);
 
   const toggleWhatsApp = async () => {
     const next = !waEnabled;
@@ -21,6 +51,15 @@ export default function ProfilePage() {
       await notificationsApi.toggleWhatsapp(next);
       setWaEnabled(next);
       toast.success(next ? 'WhatsApp enabled' : 'WhatsApp disabled');
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const toggleSms = async () => {
+    const next = !smsEnabled;
+    try {
+      await notificationsApi.toggleSms(next);
+      setSmsEnabled(next);
+      toast.success(next ? 'SMS backup enabled' : 'SMS backup disabled');
     } catch (e) { toast.error(e.message); }
   };
 
@@ -35,23 +74,37 @@ export default function ProfilePage() {
 
   const handleLogout = () => { logout(); nav('/login', { replace: true }); };
 
-  const roleIcon = { SUPER_ADMIN: '👑', ADMIN: '🛡️', HOST: '🃏', PLAYER: '👤' }[user?.role] || '👤';
-  const roleColor = { SUPER_ADMIN: 'text-gold-400', ADMIN: 'text-purple-400', HOST: 'text-felt-400', PLAYER: 'text-blue-400' }[user?.role];
+  const toggleBiometric = async () => {
+    try {
+      if (biometricEnabled) {
+        disableBiometrics();
+        toast.info('Biometric unlock disabled');
+      } else {
+        await enableBiometrics();
+        toast.success('Biometric unlock enabled');
+      }
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const roleIcon = { SUPER_ADMIN: '👑', ADMIN: '🛡️', HOST: '⌁', PLAYER: '👤' }[user?.role] || '👤';
+  const roleColor = { SUPER_ADMIN: 'text-gold-600', ADMIN: 'text-brand-600', HOST: 'text-brand-600', PLAYER: 'text-brand-600' }[user?.role];
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-24">
+    <div className="min-h-screen bg-[var(--color-gray-50)] pb-28">
       <header className="sticky-header px-4 py-3">
-        <h1 className="text-lg font-bold text-white">Profile</h1>
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Profile</h1>
       </header>
 
       <main className="px-4 py-4 space-y-4 page-enter">
         {/* User card */}
         <Card className="p-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-felt-600/20 rounded-full flex items-center justify-center text-2xl">{roleIcon}</div>
+            <div className="w-14 h-14 bg-brand-50 rounded-full flex items-center justify-center text-2xl">{roleIcon}</div>
             <div>
-              <p className="font-bold text-white text-lg">{user?.displayName}</p>
-              <p className="text-sm text-gray-400">{user?.email}</p>
+              <p className="font-semibold text-[var(--color-text-primary)] text-lg">{user?.displayName}</p>
+              <p className="text-sm text-[var(--color-text-secondary)]">{user?.email}</p>
               <p className={`text-sm font-semibold ${roleColor} capitalize mt-0.5`}>{user?.role?.toLowerCase().replace('_', ' ')}</p>
             </div>
           </div>
@@ -61,10 +114,10 @@ export default function ProfilePage() {
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Crown className="w-5 h-5 text-gold-400" />
+              <Crown className="w-5 h-5 text-gold-500" />
               <div>
-                <p className="text-white font-medium">Subscription</p>
-                <p className="text-sm text-gray-400">{user?.subscription === 'PREMIUM' ? 'Premium' : 'Free Plan'}</p>
+                <p className="text-[var(--color-text-primary)] font-medium">Subscription</p>
+                <p className="text-sm text-[var(--color-text-secondary)]">{user?.subscription === 'PREMIUM' ? 'Premium' : 'Free Plan'}</p>
               </div>
             </div>
             {user?.subscription !== 'PREMIUM' && (
@@ -74,19 +127,50 @@ export default function ProfilePage() {
         </Card>
 
         {/* Settings */}
-        <Card className="divide-y divide-gray-800">
+        <Card className="divide-y divide-[var(--color-gray-200)]">
           {/* WhatsApp Toggle */}
           <div className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <MessageCircle className="w-5 h-5 text-felt-400" />
+              <MessageCircle className="w-5 h-5 text-brand-600" />
               <div>
-                <p className="text-white font-medium">WhatsApp Notifications</p>
-                <p className="text-xs text-gray-400">Receive game notifications via WhatsApp</p>
+                <p className="text-[var(--color-text-primary)] font-medium">WhatsApp Notifications</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">Receive game notifications via WhatsApp</p>
               </div>
             </div>
             <button onClick={toggleWhatsApp}
-              className={`w-12 h-7 rounded-full transition-colors ${waEnabled ? 'bg-felt-600' : 'bg-gray-700'}`}>
+              className={`w-12 h-7 rounded-full transition-colors ${waEnabled ? 'bg-brand-500' : 'bg-[var(--color-gray-300)]'}`}>
               <div className={`w-5 h-5 bg-white rounded-full transition-transform ${waEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* SMS Toggle */}
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <PhoneCall className="w-5 h-5 text-brand-600" />
+              <div>
+                <p className="text-[var(--color-text-primary)] font-medium">SMS Backup (Twilio)</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">Fallback texts when WhatsApp is unavailable</p>
+              </div>
+            </div>
+            <button onClick={toggleSms}
+              className={`w-12 h-7 rounded-full transition-colors ${smsEnabled ? 'bg-brand-500' : 'bg-[var(--color-gray-300)]'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full transition-transform ${smsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* Biometric */}
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <User className="w-5 h-5 text-brand-500" />
+              <div>
+                <p className="text-[var(--color-text-primary)] font-medium">Biometric Unlock</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">{biometricSupported ? 'Use Face/Touch ID for quick access' : 'Not supported on this device'}</p>
+              </div>
+            </div>
+            <button onClick={toggleBiometric}
+              disabled={!biometricSupported}
+              className={`w-12 h-7 rounded-full transition-colors ${biometricEnabled ? 'bg-brand-500' : 'bg-[var(--color-gray-300)]'} ${!biometricSupported ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <div className={`w-5 h-5 bg-white rounded-full transition-transform ${biometricEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
 
@@ -95,8 +179,8 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3">
               <Key className="w-5 h-5 text-amber-400" />
               <div>
-                <p className="text-white font-medium">Security PIN</p>
-                <p className="text-xs text-gray-400">{user?.hasPin ? 'Change PIN' : 'Set up quick unlock PIN'}</p>
+                <p className="text-[var(--color-text-primary)] font-medium">Security PIN</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">{user?.hasPin ? 'Change PIN' : 'Set up quick unlock PIN'}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-gray-600" />
@@ -107,8 +191,8 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3">
               <Bell className="w-5 h-5 text-blue-400" />
               <div>
-                <p className="text-white font-medium">Phone</p>
-                <p className="text-sm text-gray-400">{user?.phone || 'Not set'}</p>
+                <p className="text-[var(--color-text-primary)] font-medium">Phone</p>
+                <p className="text-sm text-[var(--color-text-secondary)]">{user?.phone || 'Not set'}</p>
               </div>
             </div>
           </div>
@@ -119,13 +203,36 @@ export default function ProfilePage() {
           <Card className="p-4">
             <div className="flex items-center gap-3 mb-2">
               <Shield className="w-5 h-5 text-purple-400" />
-              <p className="text-white font-medium">Admin</p>
+              <p className="text-[var(--color-text-primary)] font-medium">Admin</p>
             </div>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-[var(--color-text-secondary)]">
               {isSuperAdmin ? 'Super Admin — full system access, can promote admins (max 3 super admins)' : 'Admin — manage hosts, view all game data'}
             </p>
           </Card>
         )}
+
+        {/* Trusted devices */}
+        <Card className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <Shield className="w-5 h-5 text-brand-500" />
+            <p className="text-[var(--color-text-primary)] font-medium">Trusted Devices</p>
+          </div>
+          {trustedDevices.length === 0 ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">No devices remembered yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {trustedDevices.map(device => (
+                <li key={device.id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <p className="text-[var(--color-text-primary)] font-medium">{device.label}</p>
+                    <p className="text-xs text-[var(--color-text-secondary)]">Last used {new Date(device.lastUsed || device.addedAt).toLocaleString()}</p>
+                  </div>
+                  <button onClick={() => revokeTrustedDevice(device.id)} className="text-xs text-brand-600">Revoke</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
         {/* Logout */}
         <Button variant="danger" onClick={handleLogout} className="w-full">
@@ -144,7 +251,7 @@ export default function ProfilePage() {
         </div>
       </Modal>
 
-      <BottomNav current="/profile" navigate={nav} isHost={isHost} />
+      <BottomNav current="/settings" navigate={nav} />
       <Toast toasts={toast.toasts} remove={toast.remove} />
     </div>
   );

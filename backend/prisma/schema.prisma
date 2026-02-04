@@ -32,6 +32,9 @@ model User {
   inboxMessages      InboxMessage[]
   rollingBalances    RollingBalance[] @relation("PlayerBalance")
   hostBalances       RollingBalance[] @relation("HostBalance")
+  automations        Automation[]
+  automationOverrides AutomationOverride[]
+  messagingConsents  MessagingConsent[]
   managedHosts       User[]          @relation("AdminHosts")
   managedBy          User?           @relation("AdminHosts", fields: [managedById], references: [id])
   managedById        String?
@@ -295,4 +298,87 @@ model InboxMessage {
   user      User     @relation(fields: [userId], references: [id])
 
   @@map("inbox_messages")
+}
+
+// ─── AUTOMATIONS (workflow + overrides) ────────────────
+model Automation {
+  id             String             @id @default(uuid())
+  hostId         String
+  key            String
+  name           String
+  description    String?
+  trigger        AutomationTrigger  @default(PRE_GAME_REMINDER)
+  preset         AutomationPreset   @default(TWO_HOURS_BEFORE)
+  timezone       String             @default("UTC")
+  cronExpression String?
+  channels       String[]           @default([])
+  config         Json?
+  enabled        Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  host           User               @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  overrides      AutomationOverride[]
+
+  @@unique([hostId, key])
+  @@map("automations")
+}
+
+model AutomationOverride {
+  id            String    @id @default(uuid())
+  automationId  String
+  playerId      String
+  channels      String[]  @default([])
+  muted         Boolean   @default(false)
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  player        User       @relation(fields: [playerId], references: [id])
+
+  @@unique([automationId, playerId])
+  @@map("automation_overrides")
+}
+
+enum AutomationTrigger {
+  PRE_GAME_REMINDER
+  IN_SESSION_ALERT
+  POST_GAME_SUMMARY
+  WEEKLY_DIGEST
+  MONTHLY_REPORT
+  CUSTOM
+}
+
+enum AutomationPreset {
+  TWO_HOURS_BEFORE
+  ONE_HOUR_BEFORE
+  THIRTY_MINUTES_BEFORE
+  DAY_AFTER
+  WEEKLY_SUMMARY
+  MONTHLY_REPORT
+  CUSTOM
+}
+
+// ─── MESSAGING CONSENT TRACKING ───────────────────────
+model MessagingConsent {
+  id         String             @id @default(uuid())
+  userId     String
+  channel    NotificationChannel
+  status     ConsentStatus      @default(ALLOWED)
+  source     String?
+  capturedAt DateTime           @default(now())
+  revokedAt  DateTime?
+  metadata   Json?
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel])
+  @@map("messaging_consents")
+}
+
+enum ConsentStatus {
+  ALLOWED
+  REVOKED
+  PENDING
 }
