@@ -1,7 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoadingScreen } from './components/ui';
+import { App as NativeApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -34,24 +36,42 @@ function PublicRoute({ children }) {
 // Handle Android back button — prevent app close, navigate back instead
 function BackButtonHandler() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    // Push initial state so back button has history to go back to
-    const handlePopState = (e) => {
-      // The browser already navigated back via history
-      // React Router handles this through BrowserRouter
-    };
-
+    const handlePopState = () => {};
     window.addEventListener('popstate', handlePopState);
-
-    // For PWA: prevent default back behavior that closes the app
-    // Push an extra history entry so first back doesn't exit
     if (window.history.length <= 2) {
       window.history.pushState(null, '', window.location.href);
     }
-
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [navigate]);
+  }, []);
+
+  useEffect(() => {
+    const isNative = Capacitor?.isNativePlatform?.();
+    if (!isNative || !NativeApp?.addListener) return;
+
+    const authRoutes = ['/login', '/register'];
+    const removeListener = NativeApp.addListener('backButton', () => {
+      if (location.pathname === '/' || authRoutes.includes(location.pathname)) {
+        if (NativeApp.minimizeApp) NativeApp.minimizeApp();
+        else NativeApp.exitApp();
+        return;
+      }
+
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else if (NativeApp.minimizeApp) {
+        NativeApp.minimizeApp();
+      } else {
+        NativeApp.exitApp();
+      }
+    });
+
+    return () => {
+      removeListener?.remove?.();
+    };
+  }, [location.pathname, navigate]);
 
   return null;
 }
