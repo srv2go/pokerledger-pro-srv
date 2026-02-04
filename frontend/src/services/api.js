@@ -7,15 +7,18 @@ const resolveApiBase = () => {
   if (envBase) return envBase;
 
   if (typeof window !== 'undefined') {
+    const isNativeCapacitor = !!(window.Capacitor && typeof window.Capacitor?.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+    if (isNativeCapacitor) return DEFAULT_REMOTE_API;
+
     const globalBase = sanitizeBase(window.__LEDGER_API_BASE__);
     if (globalBase) return globalBase;
 
     const { origin, protocol } = window.location || {};
-    if (origin && origin.startsWith('http')) {
-      return `${origin.replace(/\/$/, '')}/api`;
-    }
     if (protocol === 'capacitor:' || protocol === 'file:') {
       return DEFAULT_REMOTE_API;
+    }
+    if (origin && origin.startsWith('http')) {
+      return `${origin.replace(/\/$/, '')}/api`;
     }
   }
 
