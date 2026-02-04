@@ -1,6 +1,6 @@
 {
   "appId": "com.pokerledger.pro",
-  "appName": "PokerLedger Pro",
+  "appName": "Ledger AI",
   "webDir": "dist",
   "plugins": {
     "SplashScreen": {

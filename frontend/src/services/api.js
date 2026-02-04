@@ -1,5 +1,35 @@
-const API = '/api';
+const DEFAULT_REMOTE_API = 'https://pokerledger-backend.onrender.com/api';
+
+const sanitizeBase = (value) => value?.replace(/\/$/, '') || null;
+
+const resolveApiBase = () => {
+  const envBase = sanitizeBase(import.meta.env?.VITE_API_URL);
+  if (envBase) return envBase;
+
+  if (typeof window !== 'undefined') {
+    const globalBase = sanitizeBase(window.__LEDGER_API_BASE__);
+    if (globalBase) return globalBase;
+
+    const { origin, protocol } = window.location || {};
+    if (origin && origin.startsWith('http')) {
+      return `${origin.replace(/\/$/, '')}/api`;
+    }
+    if (protocol === 'capacitor:' || protocol === 'file:') {
+      return DEFAULT_REMOTE_API;
+    }
+  }
+
+  return '/api';
+};
+
+const API_BASE = resolveApiBase();
 const getToken = () => localStorage.getItem('token');
+
+const buildUrl = (endpoint) => {
+  if (endpoint.startsWith('http')) return endpoint;
+  if (!endpoint.startsWith('/')) return `${API_BASE}/${endpoint}`;
+  return `${API_BASE}${endpoint}`;
+};
 
 const request = async (endpoint, options = {}) => {
   const token = getToken();
@@ -10,7 +40,7 @@ const request = async (endpoint, options = {}) => {
   if (config.body && typeof config.body === 'object' && !(config.body instanceof Blob)) {
     config.body = JSON.stringify(config.body);
   }
-  const res = await fetch(`${API}${endpoint}`, config);
+  const res = await fetch(buildUrl(endpoint), config);
   if (endpoint.includes('/export/') && res.ok) return res; // blob response
   let data;
   try { data = await res.json(); } catch { data = null; }

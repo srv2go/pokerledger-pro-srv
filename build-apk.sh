@@ -5,7 +5,7 @@
 
 set -e  # Exit on error
 
-echo "🃏 Building PokerLedger Pro APK..."
+echo "🃏 Building Ledger AI APK..."
 echo ""
 
 # Navigate to frontend directory
@@ -26,12 +26,13 @@ cd android
 
 echo ""
 echo "📱 Step 4: Copying APK to Downloads..."
-cp app/build/outputs/apk/debug/app-debug.apk ~/Downloads/PokerLedgerPro.apk
+mkdir -p ~/Downloads/LedgerAI
+cp app/build/outputs/apk/debug/app-debug.apk ~/Downloads/LedgerAI/LedgerAI.apk
 
 echo ""
 echo "✅ Build complete!"
 echo ""
-echo "📍 APK Location: ~/Downloads/PokerLedgerPro.apk"
-ls -lh ~/Downloads/PokerLedgerPro.apk
+echo "📍 APK Location: ~/Downloads/LedgerAI/LedgerAI.apk"
+ls -lh ~/Downloads/LedgerAI/LedgerAI.apk
 echo ""
 echo "🚀 You can now transfer this APK to your Android device!"
