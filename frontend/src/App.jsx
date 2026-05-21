@@ -12,6 +12,7 @@ import GamesPage from './pages/Games';
 import CreateGame from './pages/CreateGame';
 import GameDetail from './pages/GameDetail';
 import Players from './pages/Players';
+import PlayerDetail from './pages/PlayerDetail';
 import LedgerPage from './pages/Ledger';
 import Stats from './pages/Stats';
 import History from './pages/History';
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/create-game" element={<ProtectedRoute><CreateGame /></ProtectedRoute>} />
           <Route path="/game/:id" element={<ProtectedRoute><GameDetail /></ProtectedRoute>} />
           <Route path="/players" element={<ProtectedRoute><Players /></ProtectedRoute>} />
+          <Route path="/player/:id" element={<ProtectedRoute><PlayerDetail /></ProtectedRoute>} />
           <Route path="/ledger" element={<ProtectedRoute><LedgerPage /></ProtectedRoute>} />
           <Route path="/automations" element={<ProtectedRoute><AutomationsPage /></ProtectedRoute>} />
           <Route path="/stats" element={<ProtectedRoute><Stats /></ProtectedRoute>} />

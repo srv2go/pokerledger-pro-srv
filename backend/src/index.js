@@ -10,12 +10,29 @@ const { initWebSocket } = require('./services/websocket');
 const app = express();
 const server = http.createServer(app);
 
+const parseAllowedOrigins = () => {
+  const raw = process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '*';
+  if (!raw || raw === '*') return '*';
+  const list = raw.split(',').map(v => v.trim()).filter(Boolean);
+  return list.length ? list : '*';
+};
+
+const corsOrigin = parseAllowedOrigins();
+
 // Trust proxy for Render (required for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (corsOrigin === '*') return callback(null, true);
+    if (Array.isArray(corsOrigin) && corsOrigin.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS blocked for this origin'));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 

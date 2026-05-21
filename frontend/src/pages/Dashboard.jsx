@@ -12,6 +12,7 @@ import {
   Clock8,
   Wallet,
   FileBarChart,
+  Inbox,
   Settings,
   Home as HomeIcon,
   ClipboardList,
@@ -177,6 +178,25 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
+          </section>
+
+          {/* Quick access */}
+          <section>
+            <h2 className="text-sm font-semibold tracking-wide text-[var(--color-text-secondary)] uppercase mb-3">Quick Access</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card className="p-4 cursor-pointer hover:shadow-lg transition" onClick={() => navigate('/stats')}>
+                <div className="flex items-center gap-2 text-[var(--color-text-primary)] font-medium"><FileBarChart className="w-4 h-4 text-brand-600" /> Stats</div>
+              </Card>
+              <Card className="p-4 cursor-pointer hover:shadow-lg transition" onClick={() => navigate('/history')}>
+                <div className="flex items-center gap-2 text-[var(--color-text-primary)] font-medium"><ClipboardList className="w-4 h-4 text-brand-600" /> History</div>
+              </Card>
+              <Card className="p-4 cursor-pointer hover:shadow-lg transition" onClick={() => navigate('/inbox')}>
+                <div className="flex items-center gap-2 text-[var(--color-text-primary)] font-medium"><Inbox className="w-4 h-4 text-brand-600" /> Inbox</div>
+              </Card>
+              <Card className="p-4 cursor-pointer hover:shadow-lg transition" onClick={() => navigate('/settings')}>
+                <div className="flex items-center gap-2 text-[var(--color-text-primary)] font-medium"><Settings className="w-4 h-4 text-brand-600" /> Settings</div>
+              </Card>
+            </div>
           </section>
         </div>
       </main>
